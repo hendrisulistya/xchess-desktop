@@ -80,7 +80,7 @@ func (a *App) CheckAdminCredentials(username, password string) (bool, error) {
 
 // Initialize a new tournament with a title and player names.
 // Returns true if initialization succeeded.
-func (a *App) InitTournament(title string, playerNames []string) (bool, error) {
+func (a *App) InitTournament(title string, description string, playerNames []string) (bool, error) {
 	players := make([]model.Player, 0, len(playerNames))
 	for _, name := range playerNames {
 		players = append(players, model.Player{
@@ -98,7 +98,7 @@ func (a *App) InitTournament(title string, playerNames []string) (bool, error) {
 		ByeScore:      1.0,
 		PairingSystem: "SWISS",
 	}
-	if err := tournament.InitializeTournament(t, title, players); err != nil {
+	if err := tournament.InitializeTournament(t, title, description, players); err != nil {
 		return false, err
 	}
 	a.currentTournament = t
@@ -157,6 +157,14 @@ func (a *App) GetPlayers() ([]model.Player, error) {
 	return a.currentTournament.GetPlayers()
 }
 
+// GetStandings returns sorted standings for the active tournament.
+func (a *App) GetStandings() ([]model.Player, error) {
+	if a.currentTournament == nil {
+		return []model.Player{}, nil
+	}
+	return tournament.GetStandings(a.currentTournament)
+}
+
 // Optionally expose basic tournament info for the frontend.
 func (a *App) GetTournamentInfo() (model.Tournament, error) {
 	if a.currentTournament == nil {
@@ -179,7 +187,7 @@ func (a *App) ListPlayers() ([]model.Player, error) {
 
 // Initialize a new tournament using selected existing player IDs.
 // No player creation; we load players from the DB and initialize the tournament.
-func (a *App) InitTournamentWithPlayerIDs(title string, playerIDs []string) (bool, error) {
+func (a *App) InitTournamentWithPlayerIDs(title string, description string, playerIDs []string) (bool, error) {
 	if a.db == nil {
 		return false, nil
 	}
@@ -195,7 +203,7 @@ func (a *App) InitTournamentWithPlayerIDs(title string, playerIDs []string) (boo
 		ByeScore:      1.0,
 		PairingSystem: "SWISS",
 	}
-	if err := tournament.InitializeTournament(t, title, players); err != nil {
+	if err := tournament.InitializeTournament(t, title, description, players); err != nil {
 		return false, err
 	}
 	a.currentTournament = t

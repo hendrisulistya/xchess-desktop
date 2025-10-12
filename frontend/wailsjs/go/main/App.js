@@ -14,16 +14,20 @@ export function GetPlayers() {
   return window['go']['main']['App']['GetPlayers']();
 }
 
+export function GetStandings() {
+  return window['go']['main']['App']['GetStandings']();
+}
+
 export function GetTournamentInfo() {
   return window['go']['main']['App']['GetTournamentInfo']();
 }
 
-export function InitTournament(arg1, arg2) {
-  return window['go']['main']['App']['InitTournament'](arg1, arg2);
+export function InitTournament(arg1, arg2, arg3) {
+  return window['go']['main']['App']['InitTournament'](arg1, arg2, arg3);
 }
 
-export function InitTournamentWithPlayerIDs(arg1, arg2) {
-  return window['go']['main']['App']['InitTournamentWithPlayerIDs'](arg1, arg2);
+export function InitTournamentWithPlayerIDs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['InitTournamentWithPlayerIDs'](arg1, arg2, arg3);
 }
 
 export function ListPlayers() {

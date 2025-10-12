@@ -1,8 +1,16 @@
+/*
+Maintainers note:
+This file implements Swiss tournament rules and gameplay logic.
+Refer to the specification at internal/tournament/tournament.md for the current rules, pairing, scoring, tie-breaks, and lifecycle.
+Update implementations here to match the specification as it evolves.
+*/
 package tournament
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"xchess-desktop/internal/model"
@@ -104,8 +112,7 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		return matches, nil
 	}
 
-	// Subsequent rounds: Swiss-like pairing using our model state
-	// 1) Sort by Score desc, then Buchholz desc (updated via UpdateStandings), tie-break by Rating desc, then Name asc
+	// Subsequent rounds: Swiss-like pairing with hard constraints (no rematches, max score diff 1.0)
 	ps := make([]model.Player, len(players))
 	copy(ps, players)
 	sort.SliceStable(ps, func(i, j int) bool {
@@ -120,16 +127,6 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		}
 		return ps[i].Name < ps[j].Name
 	})
-
-	// 2) Build quick index: id -> player and helper sets
-	index := make(map[string]*model.Player, len(ps))
-	for i := range ps {
-		index[ps[i].ID] = &ps[i]
-	}
-
-	paired := make(map[string]bool, len(ps))
-	matches := make([]model.Match, 0, len(ps)/2+1)
-	table := 1
 
 	// Helper: check if two players have played before
 	havePlayed := func(a, b *model.Player) bool {
@@ -165,96 +162,130 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		return nil
 	}
 
-	// 3) Pair iteration, prefer same-score opponents without rematches, otherwise closest-score opponents
-	for i := 0; i < len(ps); i++ {
-		a := &ps[i]
-		if paired[a.ID] {
-			continue
+	// Backtracking pairing under constraints
+	used := make(map[string]bool, len(ps))
+	matches := make([]model.Match, 0, len(ps)/2+1)
+	table := 1
+	allowBye := len(ps)%2 == 1
+	byeAssigned := false
+
+	abs := func(x float64) float64 {
+		if x < 0 {
+			return -x
+		}
+		return x
+	}
+
+	var backtrack func() bool
+	backtrack = func() bool {
+		// Find first unpaired player
+		var a *model.Player
+		for i := range ps {
+			if !used[ps[i].ID] {
+				a = &ps[i]
+				break
+			}
+		}
+		// All paired
+		if a == nil {
+			return true
 		}
 
-		// Find best opponent
-		var best *model.Player
-
-		// First pass: same-score candidates, no rematch
-		for j := i + 1; j < len(ps); j++ {
-			b := &ps[j]
-			if paired[b.ID] {
+		// Build candidate list: not used, no rematch, within score diff <= 1.0
+		type cand struct {
+			j         int
+			scoreDiff float64
+		}
+		var cands []cand
+		for j := range ps {
+			if ps[j].ID == a.ID || used[ps[j].ID] {
 				continue
 			}
-			if a.Score == b.Score && !havePlayed(a, b) {
-				best = b
-				break
+			if havePlayed(a, &ps[j]) {
+				continue
 			}
-		}
-		// Second pass: closest-score candidates, no rematch
-		if best == nil {
-			for j := i + 1; j < len(ps); j++ {
-				b := &ps[j]
-				if paired[b.ID] {
-					continue
-				}
-				if !havePlayed(a, b) {
-					best = b
-					break
-				}
+			diff := abs(a.Score - ps[j].Score)
+			if diff > 1.0 {
+				continue
 			}
+			cands = append(cands, cand{j: j, scoreDiff: diff})
 		}
-		// Last resort: allow rematch
-		if best == nil {
-			for j := i + 1; j < len(ps); j++ {
-				b := &ps[j]
-				if paired[b.ID] {
-					continue
-				}
-				best = b
-				break
-			}
-		}
+		// Prefer same-score (diff=0), then closest-score
+		sort.SliceStable(cands, func(i, j int) bool {
+			return cands[i].scoreDiff < cands[j].scoreDiff
+		})
 
-		if best != nil {
-			// Simple color assignment with minimal balancing using ColorHistory
+		for _, c := range cands {
+			b := &ps[c.j]
 			white := a
-			black := best
+			black := b
 			if len(white.ColorHistory) > 0 && white.ColorHistory[len(white.ColorHistory)-1] == 'W' {
-				// If a recently had White, try give Black
 				white, black = black, white
 			}
 
+			used[a.ID] = true
+			used[b.ID] = true
 			matches = append(matches, model.Match{
 				RoundNumber: roundNumber,
 				TableNumber: table,
 				PlayerA_ID:  a.ID,
-				PlayerB_ID:  best.ID,
+				PlayerB_ID:  b.ID,
 				WhiteID:     white.ID,
 				BlackID:     black.ID,
 				Result:      "",
 			})
-			paired[a.ID] = true
-			paired[best.ID] = true
 			table++
-		}
-	}
 
-	// 4) BYE handling if someone remains unpaired
-	if len(matches)*2 < len(ps) {
-		// Collect unpaired candidates
-		var candidates []model.Player
-		for i := range ps {
-			if !paired[ps[i].ID] {
-				candidates = append(candidates, ps[i])
+			if backtrack() {
+				return true
+			}
+
+			// Undo
+			table--
+			matches = matches[:len(matches)-1]
+			used[b.ID] = false
+			used[a.ID] = false
+		}
+
+		// If no candidate found, try assigning BYE only if allowed and not yet assigned
+		if allowBye && !byeAssigned {
+			var candidates []model.Player
+			for i := range ps {
+				if !used[ps[i].ID] {
+					candidates = append(candidates, ps[i])
+				}
+			}
+			if bye := chooseBye(candidates); bye != nil && bye.ID == a.ID {
+				used[a.ID] = true
+				matches = append(matches, model.Match{
+					RoundNumber: roundNumber,
+					TableNumber: table,
+					PlayerA_ID:  a.ID,
+					PlayerB_ID:  ByePlayerID,
+					WhiteID:     a.ID,
+					BlackID:     "",
+					Result:      "",
+				})
+				table++
+				byeAssigned = true
+
+				if backtrack() {
+					return true
+				}
+
+				// Undo
+				byeAssigned = false
+				table--
+				matches = matches[:len(matches)-1]
+				used[a.ID] = false
 			}
 		}
-		if bye := chooseBye(candidates); bye != nil {
-			matches = append(matches, model.Match{
-				RoundNumber: roundNumber,
-				TableNumber: table,
-				PlayerA_ID:  bye.ID,
-				PlayerB_ID:  ByePlayerID,
-				WhiteID:     bye.ID,
-				BlackID:     "",
-				Result:      "",
-			})
-		}
+
+		return false
+	}
+
+	if !backtrack() {
+		return nil, fmt.Errorf("unable to generate pairings: no rematches and max score difference 1.0 constraints cannot be satisfied")
 	}
 
 	return matches, nil
@@ -265,9 +296,17 @@ const ByePlayerID = "BYE"
 // InitializeTournament sets minimal fields and attaches players.
 // Title is required; players will be serialized into PlayersData.
 // PairingSystem defaults to "SWISS"; ByeScore defaults to 1.0 if unset.
-func InitializeTournament(t *model.Tournament, title string, players []model.Player) error {
+func InitializeTournament(t *model.Tournament, title string, description string, players []model.Player) error {
+	// Validate required fields
+	if strings.TrimSpace(title) == "" {
+		return fmt.Errorf("field must be filled: Title is required")
+	}
+	if strings.TrimSpace(description) == "" {
+		return fmt.Errorf("field must be filled: Description is required")
+	}
+
 	t.Title = title
-	t.Description = "Swiss-system tournament"
+	t.Description = description
 	t.Status = "ACTIVE"
 	t.StartTime = time.Now()
 	t.CurrentRound = 0
@@ -313,6 +352,7 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 
 	// Locate the target match
 	var match *model.Match
+	roundIndex := -1
 	for r := range rounds {
 		if rounds[r].RoundNumber != roundNumber {
 			continue
@@ -320,6 +360,7 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 		for m := range rounds[r].Matches {
 			if rounds[r].Matches[m].TableNumber == tableNumber {
 				match = &rounds[r].Matches[m]
+				roundIndex = r
 				break
 			}
 		}
@@ -366,7 +407,6 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 		a.Score += match.ScoreA
 		if bID != ByePlayerID {
 			ensureOpponent(a, bID)
-			// Update color history: "W" if a is White, "B" if Black
 			if match.WhiteID == a.ID {
 				a.ColorHistory += "W"
 			} else if match.BlackID == a.ID {
@@ -374,7 +414,6 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 			}
 		} else {
 			a.HasBye = true
-			// You may add a marker for bye in color history if desired, e.g., "-"
 		}
 	}
 	if bID != ByePlayerID {
@@ -387,6 +426,18 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 				b.ColorHistory += "B"
 			}
 		}
+	}
+
+	// Mark round complete if all matches have recorded results
+	if roundIndex >= 0 {
+		complete := true
+		for _, m := range rounds[roundIndex].Matches {
+			if m.Result == "" {
+				complete = false
+				break
+			}
+		}
+		rounds[roundIndex].IsComplete = complete
 	}
 
 	// Persist updated rounds and players
@@ -440,12 +491,54 @@ func UpdateStandings(t *model.Tournament) error {
 	return t.SetPlayers(players)
 }
 
+// GetStandings returns the players sorted by Score desc, Buchholz desc, Rating desc, Name asc.
+// It recomputes Buchholz before sorting to ensure tie-breaks are up-to-date.
+func GetStandings(t *model.Tournament) ([]model.Player, error) {
+	if err := UpdateStandings(t); err != nil {
+		return nil, err
+	}
+	players, err := t.GetPlayers()
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(players, func(i, j int) bool {
+		if players[i].Score != players[j].Score {
+			return players[i].Score > players[j].Score
+		}
+		if players[i].Buchholz != players[j].Buchholz {
+			return players[i].Buchholz > players[j].Buchholz
+		}
+		if players[i].Rating != players[j].Rating {
+			return players[i].Rating > players[j].Rating
+		}
+		return players[i].Name < players[j].Name
+	})
+	return players, nil
+}
+
 // AdvanceToNextRound runs the pairing engine for the next round and persists the round.
 // It updates CurrentRound and TotalPlayers on the tournament.
 func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 	players, err := t.GetPlayers()
 	if err != nil {
 		return err
+	}
+
+	// Prevent advancing if the current round exists and is not complete
+	if t.CurrentRound > 0 {
+		rounds, err2 := t.GetRounds()
+		if err2 != nil {
+			return err2
+		}
+
+		for _, r := range rounds {
+			if r.RoundNumber == t.CurrentRound {
+				if !r.IsComplete {
+					return fmt.Errorf("cannot advance: current round %d is not complete", t.CurrentRound)
+				}
+				break
+			}
+		}
 	}
 
 	nextRoundNumber := t.CurrentRound + 1

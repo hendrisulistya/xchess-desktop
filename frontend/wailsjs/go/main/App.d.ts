@@ -8,11 +8,13 @@ export function GetCurrentRound():Promise<model.Round>;
 
 export function GetPlayers():Promise<Array<model.Player>>;
 
+export function GetStandings():Promise<Array<model.Player>>;
+
 export function GetTournamentInfo():Promise<model.Tournament>;
 
-export function InitTournament(arg1:string,arg2:Array<string>):Promise<boolean>;
+export function InitTournament(arg1:string,arg2:string,arg3:Array<string>):Promise<boolean>;
 
-export function InitTournamentWithPlayerIDs(arg1:string,arg2:Array<string>):Promise<boolean>;
+export function InitTournamentWithPlayerIDs(arg1:string,arg2:string,arg3:Array<string>):Promise<boolean>;
 
 export function ListPlayers():Promise<Array<model.Player>>;
 
