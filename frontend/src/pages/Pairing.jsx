@@ -51,6 +51,14 @@ function Pairing() {
     );
   };
 
+  const selectAll = () => {
+    if (selectedIDs.length === players.length) {
+      setSelectedIDs([]);
+    } else {
+      setSelectedIDs(players.map((player) => player.id));
+    }
+  };
+
   const initTournament = async () => {
     if (selectedIDs.length < 2) {
       setStatus("Pilih minimal 2 pemain untuk memulai turnamen");
@@ -250,9 +258,19 @@ function Pairing() {
             </div>
 
             <div className="bg-white border-2 border-black p-6">
-              <h3 className="text-xl font-bold mb-4">
-                Pilih Peserta ({selectedIDs.length} dipilih)
-              </h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">
+                  Pilih Peserta ({selectedIDs.length} dipilih)
+                </h3>
+                <button
+                  onClick={selectAll}
+                  className="px-4 py-2 text-sm font-medium border-2 border-black bg-white text-black hover:bg-gray-100 transition-colors"
+                >
+                  {selectedIDs.length === players.length
+                    ? "Deselect All"
+                    : "Select All"}
+                </button>
+              </div>
 
               {players.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">
@@ -346,8 +364,14 @@ function Pairing() {
                           <th className="px-4 py-3 text-left font-medium">
                             Putih
                           </th>
+                          <th className="px-4 py-3 text-center font-medium">
+                            Poin
+                          </th>
                           <th className="px-4 py-3 text-left font-medium">
                             Hitam
+                          </th>
+                          <th className="px-4 py-3 text-center font-medium">
+                            Poin
                           </th>
                           <th className="px-4 py-3 text-center font-medium">
                             Hasil
@@ -355,91 +379,118 @@ function Pairing() {
                         </tr>
                       </thead>
                       <tbody>
-                        {currentRound.matches.map((match, index) => (
-                          <tr
-                            key={match.table_number}
-                            className={
-                              index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                            }
-                          >
-                            <td className="px-4 py-4 font-medium">
-                              #{match.table_number}
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex items-center">
-                                <span className="text-2xl mr-2">♔</span>
-                                {idToName[match.white_id] || match.white_id}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex items-center">
-                                <span className="text-2xl mr-2">♚</span>
+                        {currentRound.matches.map((match, index) => {
+                          // Cari data pemain untuk mendapatkan poin
+                          const whitePlayer = standings.find(
+                            (p) => p.id === match.white_id
+                          );
+                          const blackPlayer = standings.find(
+                            (p) => p.id === match.black_id
+                          );
+
+                          return (
+                            <tr
+                              key={match.table_number}
+                              className={
+                                index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                              }
+                            >
+                              <td className="px-4 py-4 font-medium">
+                                #{match.table_number}
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center">
+                                  <span className="text-2xl mr-2">♔</span>
+                                  {idToName[match.white_id] || match.white_id}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-center font-bold">
+                                {whitePlayer ? whitePlayer.score : 0}
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center">
+                                  <span className="text-2xl mr-2">♚</span>
+                                  {match.player_b_id === "BYE"
+                                    ? "BYE"
+                                    : idToName[match.black_id] ||
+                                      match.black_id}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-center font-bold">
                                 {match.player_b_id === "BYE"
-                                  ? "BYE"
-                                  : idToName[match.black_id] || match.black_id}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex justify-center space-x-2">
-                                {match.player_b_id === "BYE" ? (
-                                  <button
-                                    onClick={() =>
-                                      recordResult(match.table_number, "BYE_A")
-                                    }
-                                    className={getResultButtonStyle(
-                                      "BYE_A",
-                                      match.result === "BYE_A"
-                                    )}
-                                  >
-                                    Apply Bye
-                                  </button>
-                                ) : (
-                                  <>
+                                  ? "-"
+                                  : blackPlayer
+                                  ? blackPlayer.score
+                                  : 0}
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex justify-center space-x-2">
+                                  {match.player_b_id === "BYE" ? (
                                     <button
                                       onClick={() =>
                                         recordResult(
                                           match.table_number,
-                                          "A_WIN"
+                                          "BYE_A"
                                         )
                                       }
                                       className={getResultButtonStyle(
-                                        "A_WIN",
-                                        match.result === "A_WIN"
+                                        "BYE_A",
+                                        match.result === "BYE_A"
                                       )}
                                     >
-                                      1-0
+                                      Apply Bye
                                     </button>
-                                    <button
-                                      onClick={() =>
-                                        recordResult(match.table_number, "DRAW")
-                                      }
-                                      className={getResultButtonStyle(
-                                        "DRAW",
-                                        match.result === "DRAW"
-                                      )}
-                                    >
-                                      ½-½
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        recordResult(
-                                          match.table_number,
-                                          "B_WIN"
-                                        )
-                                      }
-                                      className={getResultButtonStyle(
-                                        "B_WIN",
-                                        match.result === "B_WIN"
-                                      )}
-                                    >
-                                      0-1
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() =>
+                                          recordResult(
+                                            match.table_number,
+                                            "A_WIN"
+                                          )
+                                        }
+                                        className={getResultButtonStyle(
+                                          "A_WIN",
+                                          match.result === "A_WIN"
+                                        )}
+                                      >
+                                        1-0
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          recordResult(
+                                            match.table_number,
+                                            "DRAW"
+                                          )
+                                        }
+                                        className={getResultButtonStyle(
+                                          "DRAW",
+                                          match.result === "DRAW"
+                                        )}
+                                      >
+                                        ½-½
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          recordResult(
+                                            match.table_number,
+                                            "B_WIN"
+                                          )
+                                        }
+                                        className={getResultButtonStyle(
+                                          "B_WIN",
+                                          match.result === "B_WIN"
+                                        )}
+                                      >
+                                        0-1
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
