@@ -128,6 +128,24 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		return ps[i].Name < ps[j].Name
 	})
 
+	// Compute last table numbers from previous round for table proximity
+	lastTable := make(map[string]int, len(ps))
+	if roundNumber > 1 {
+		if rounds, err := t.GetRounds(); err == nil {
+			for _, r := range rounds {
+				if r.RoundNumber == roundNumber-1 {
+					for _, m := range r.Matches {
+						lastTable[m.PlayerA_ID] = m.TableNumber
+						if m.PlayerB_ID != ByePlayerID {
+							lastTable[m.PlayerB_ID] = m.TableNumber
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
 	// Helper: check if two players have played before
 	havePlayed := func(a, b *model.Player) bool {
 		for _, oid := range a.OpponentIDs {
@@ -175,6 +193,12 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		}
 		return x
 	}
+	intAbs := func(x int) int {
+		if x < 0 {
+			return -x
+		}
+		return x
+	}
 
 	var backtrack func() bool
 	backtrack = func() bool {
@@ -195,6 +219,7 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		type cand struct {
 			j         int
 			scoreDiff float64
+			tableProx int
 		}
 		var cands []cand
 		for j := range ps {
@@ -208,11 +233,21 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 			if diff > 1.0 {
 				continue
 			}
-			cands = append(cands, cand{j: j, scoreDiff: diff})
+			// Prefer pairing with closest previous tables (secondary priority)
+			aTable := lastTable[a.ID]
+			bTable := lastTable[ps[j].ID]
+			prox := 1 << 30
+			if aTable > 0 && bTable > 0 {
+				prox = intAbs(aTable - bTable)
+			}
+			cands = append(cands, cand{j: j, scoreDiff: diff, tableProx: prox})
 		}
-		// Prefer same-score (diff=0), then closest-score
+		// Prefer same-score (diff=0), then closest previous tables
 		sort.SliceStable(cands, func(i, j int) bool {
-			return cands[i].scoreDiff < cands[j].scoreDiff
+			if cands[i].scoreDiff != cands[j].scoreDiff {
+				return cands[i].scoreDiff < cands[j].scoreDiff
+			}
+			return cands[i].tableProx < cands[j].tableProx
 		})
 
 		for _, c := range cands {
@@ -247,22 +282,24 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 			used[a.ID] = false
 		}
 
-		// If no candidate found, try assigning BYE only if allowed and not yet assigned
+		// If no candidate found, try assigning BYE only if allowed and not yet assigned.
+		// Assign BYE to the actual low-score candidate among remaining unpaired players.
 		if allowBye && !byeAssigned {
-			var candidates []model.Player
+			var remaining []model.Player
 			for i := range ps {
 				if !used[ps[i].ID] {
-					candidates = append(candidates, ps[i])
+					remaining = append(remaining, ps[i])
 				}
 			}
-			if bye := chooseBye(candidates); bye != nil && bye.ID == a.ID {
-				used[a.ID] = true
+			if bye := chooseBye(remaining); bye != nil {
+				// Assign BYE to the selected 'bye' player
+				used[bye.ID] = true
 				matches = append(matches, model.Match{
 					RoundNumber: roundNumber,
 					TableNumber: table,
-					PlayerA_ID:  a.ID,
+					PlayerA_ID:  bye.ID,
 					PlayerB_ID:  ByePlayerID,
-					WhiteID:     a.ID,
+					WhiteID:     bye.ID,
 					BlackID:     "",
 					Result:      "",
 				})
@@ -277,7 +314,7 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 				byeAssigned = false
 				table--
 				matches = matches[:len(matches)-1]
-				used[a.ID] = false
+				used[bye.ID] = false
 			}
 		}
 
@@ -370,6 +407,11 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 	}
 	if match == nil {
 		return nil // No-op if not found; you may change to error if preferred
+	}
+
+	// Prevent double-counting: if this match already has a result, do not apply again.
+	if match.Result != "" {
+		return fmt.Errorf("match result already recorded for round %d, table %d", roundNumber, tableNumber)
 	}
 
 	// Update match scores based on result
@@ -547,6 +589,82 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 	matches, err := engine.GeneratePairings(t, players, nextRoundNumber)
 	if err != nil {
 		return err
+	}
+
+	// Reorder matches so the previous table-1 winner stays on table 1,
+	// BYE (if any) moves to last, and remaining matches follow standings.
+	// This prioritizes keeping table over keeping color.
+	// Helper: find previous round table-1 winner
+	prevTable1Winner := ""
+	if t.CurrentRound > 0 {
+		if rounds, rErr := t.GetRounds(); rErr == nil {
+			for _, r := range rounds {
+				if r.RoundNumber == t.CurrentRound {
+					for _, m := range r.Matches {
+						if m.TableNumber != 1 {
+							continue
+						}
+						switch m.Result {
+						case "A_WIN", "BYE_A":
+							prevTable1Winner = m.PlayerA_ID
+						case "B_WIN":
+							prevTable1Winner = m.PlayerB_ID
+						default:
+							prevTable1Winner = "" // DRAW or empty result: no anchor
+						}
+						break
+					}
+					break
+				}
+			}
+		}
+	}
+	// Build standings rank map for fallback ordering
+	rank := map[string]int{}
+	if standings, sErr := GetStandings(t); sErr == nil {
+		for i := range standings {
+			rank[standings[i].ID] = i // smaller index => higher rank
+		}
+	}
+	// Helper: best rank involved in a match (BYE considered worst so it goes last)
+	bestRank := func(m model.Match) int {
+		if m.PlayerA_ID == ByePlayerID || m.PlayerB_ID == ByePlayerID {
+			return len(players) + 1
+		}
+		ra := rank[m.PlayerA_ID]
+		rb := rank[m.PlayerB_ID]
+		if ra < rb {
+			return ra
+		}
+		return rb
+	}
+	hasBye := func(m model.Match) bool {
+		return m.PlayerA_ID == ByePlayerID || m.PlayerB_ID == ByePlayerID
+	}
+	contains := func(m model.Match, id string) bool {
+		return id != "" && (m.PlayerA_ID == id || m.PlayerB_ID == id)
+	}
+
+	// Sort with priority:
+	// 1) match containing previous table-1 winner comes first
+	// 2) BYE matches go last
+	// 3) remaining matches ordered by standings (bestRank)
+	sort.SliceStable(matches, func(i, j int) bool {
+		iHasAnchor := contains(matches[i], prevTable1Winner)
+		jHasAnchor := contains(matches[j], prevTable1Winner)
+		if iHasAnchor != jHasAnchor {
+			return iHasAnchor
+		}
+		iBye := hasBye(matches[i])
+		jBye := hasBye(matches[j])
+		if iBye != jBye {
+			return !iBye
+		}
+		return bestRank(matches[i]) < bestRank(matches[j])
+	})
+	// Reassign table numbers after sorting
+	for i := range matches {
+		matches[i].TableNumber = i + 1
 	}
 
 	rounds, err := t.GetRounds()
