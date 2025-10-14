@@ -377,29 +377,18 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 	if err != nil {
 		return err
 	}
-	players, err := t.GetPlayers()
-	if err != nil {
-		return err
-	}
 
-	// Build quick index for players
-	playerIndex := make(map[string]*model.Player, len(players))
-	for i := range players {
-		p := &players[i]
-		playerIndex[p.ID] = p
-	}
-
-	// Locate the target match
+	// Locate the target match and round
 	var match *model.Match
-	roundIndex := -1
+	var targetRound *model.Round
 	for r := range rounds {
 		if rounds[r].RoundNumber != roundNumber {
 			continue
 		}
+		targetRound = &rounds[r]
 		for m := range rounds[r].Matches {
 			if rounds[r].Matches[m].TableNumber == tableNumber {
 				match = &rounds[r].Matches[m]
-				roundIndex = r
 				break
 			}
 		}
@@ -408,15 +397,15 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 		}
 	}
 	if match == nil {
-		return nil // No-op if not found; you may change to error if preferred
+		return fmt.Errorf("match not found for round %d, table %d", roundNumber, tableNumber)
 	}
 
-	// Prevent double-counting: if this match already has a result, do not apply again.
-	if match.Result != "" {
-		return fmt.Errorf("match result already recorded for round %d, table %d", roundNumber, tableNumber)
+	// Validate BYE consistency
+	if result == "BYE_A" && match.PlayerB_ID != ByePlayerID {
+		return fmt.Errorf("invalid result BYE_A for non-bye match at round %d, table %d", roundNumber, tableNumber)
 	}
 
-	// Update match scores based on result
+	// Overwrite match result and scores (supports resubmission safely)
 	switch result {
 	case "A_WIN":
 		match.Result = "A_WIN"
@@ -438,61 +427,59 @@ func RecordMatchResult(t *model.Tournament, roundNumber int, tableNumber int, re
 		match.ScoreA = t.ByeScore
 		match.ScoreB = 0.0
 	default:
-		// Unknown result; no changes
-		return nil
+		return fmt.Errorf("unknown result %q", result)
 	}
 
-	// Apply player updates
-	aID := match.PlayerA_ID
-	bID := match.PlayerB_ID
-
-	// Update scores and opponent lists
-	if a, ok := playerIndex[aID]; ok {
-		a.Score += match.ScoreA
-		if bID != ByePlayerID {
-			ensureOpponent(a, bID)
-			if match.WhiteID == a.ID {
-				a.ColorHistory += "W"
-			} else if match.BlackID == a.ID {
-				a.ColorHistory += "B"
-			}
-		} else {
-			a.HasBye = true
+	// Check if all matches in this round are now complete
+	allComplete := true
+	for _, m := range targetRound.Matches {
+		if m.Result == "" {
+			allComplete = false
+			break
 		}
 	}
-	if bID != ByePlayerID {
-		if b, ok := playerIndex[bID]; ok {
-			b.Score += match.ScoreB
-			ensureOpponent(b, aID)
-			if match.WhiteID == b.ID {
-				b.ColorHistory += "W"
-			} else if match.BlackID == b.ID {
-				b.ColorHistory += "B"
-			}
-		}
-	}
+	targetRound.IsComplete = allComplete
 
-	// Mark round complete if all matches have recorded results
-	if roundIndex >= 0 {
-		complete := true
-		for _, m := range rounds[roundIndex].Matches {
-			if m.Result == "" {
-				complete = false
-				break
-			}
-		}
-		rounds[roundIndex].IsComplete = complete
-	}
-
-	// Persist updated rounds and players
+	// Persist updated rounds before recompute
 	if err := t.SetRounds(rounds); err != nil {
 		return err
 	}
-	if err := t.SetPlayers(players); err != nil {
+
+	// Recompute all players (Score, ColorHistory, HasBye, OpponentIDs) from all recorded matches
+	if err := RecomputePlayersFromRounds(t); err != nil {
 		return err
 	}
 
-	// Recompute Buchholz after this result
+	// Remove previous MATCH_RESULT_RECORDED event for this round/table to avoid double spending
+	events, _ := t.GetEvents()
+	filtered := make([]model.Event, 0, len(events))
+	for _, e := range events {
+		if !(e.Type == "MATCH_RESULT_RECORDED" && e.RoundNumber == roundNumber && e.TableNumber == tableNumber) {
+			filtered = append(filtered, e)
+		}
+	}
+	events = filtered
+
+	// Append event: MATCH_RESULT_RECORDED with match snapshot
+	detail := struct {
+		Match model.Match `json:"match"`
+	}{
+		Match: *match,
+	}
+	detailJSON, _ := json.Marshal(detail)
+	events = append(events, model.Event{
+		EventID:     uuid.New(),
+		Type:        "MATCH_RESULT_RECORDED",
+		Timestamp:   time.Now(),
+		RoundNumber: roundNumber,
+		TableNumber: tableNumber,
+		Details:     detailJSON,
+	})
+	if err := t.SetEvents(events); err != nil {
+		return err
+	}
+
+	// Recompute standings (including Buchholz)
 	UpdateStandings(t)
 
 	return nil
@@ -578,7 +565,44 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 		for _, r := range rounds {
 			if r.RoundNumber == t.CurrentRound {
 				if !r.IsComplete {
-					return fmt.Errorf("cannot advance: current round %d is not complete", t.CurrentRound)
+					// Collect detailed information about incomplete matches
+					var incompleteMatches []string
+					var totalMatches int
+					var completedMatches int
+					
+					for _, m := range r.Matches {
+						totalMatches++
+						if m.Result == "" {
+							// Format player names for better readability
+							playerAName := getPlayerName(players, m.PlayerA_ID)
+							playerBName := getPlayerName(players, m.PlayerB_ID)
+							
+							if m.PlayerB_ID == ByePlayerID {
+								incompleteMatches = append(incompleteMatches, 
+									fmt.Sprintf("Table %d: %s (BYE)", m.TableNumber, playerAName))
+							} else {
+								incompleteMatches = append(incompleteMatches, 
+									fmt.Sprintf("Table %d: %s vs %s", m.TableNumber, playerAName, playerBName))
+							}
+						} else {
+							completedMatches++
+						}
+					}
+					
+					// Build detailed error message
+					errorMsg := fmt.Sprintf("Cannot advance: Round %d is not complete (%d/%d matches finished).\n", 
+						t.CurrentRound, completedMatches, totalMatches)
+					
+					if len(incompleteMatches) > 0 {
+						errorMsg += "Incomplete matches:\n"
+						for _, match := range incompleteMatches {
+							errorMsg += "• " + match + "\n"
+						}
+						// Remove trailing newline
+						errorMsg = strings.TrimSuffix(errorMsg, "\n")
+					}
+					
+					return fmt.Errorf(errorMsg)
 				}
 				break
 			}
@@ -737,4 +761,94 @@ func AddPlayer(t *model.Tournament, name string, rating int) (string, error) {
 	t.TotalPlayers = len(players)
 
 	return playerID, nil
+}
+
+// RecomputePlayersFromRounds rebuilds all player aggregates from the source of truth (rounds).
+// This prevents double-counting when results are modified or resubmitted.
+func RecomputePlayersFromRounds(t *model.Tournament) error {
+	players, err := t.GetPlayers()
+	if err != nil {
+		return err
+	}
+	rounds, err := t.GetRounds()
+	if err != nil {
+		return err
+	}
+
+	// Index players by ID for fast updates
+	index := make(map[string]*model.Player, len(players))
+	for i := range players {
+		p := &players[i]
+		// Reset aggregate fields
+		p.Score = 0
+		p.ColorHistory = ""
+		p.HasBye = false
+		p.OpponentIDs = []string{}
+		index[p.ID] = p
+	}
+
+	// Apply contributions from all matches that have a recorded result
+	for _, r := range rounds {
+		for _, m := range r.Matches {
+			if m.Result == "" {
+				continue
+			}
+
+			// Score updates
+			if a, ok := index[m.PlayerA_ID]; ok {
+				a.Score += m.ScoreA
+			}
+			if m.PlayerB_ID != ByePlayerID {
+				if b, ok := index[m.PlayerB_ID]; ok {
+					b.Score += m.ScoreB
+				}
+			}
+
+			// Opponents and color history
+			if m.PlayerB_ID != ByePlayerID {
+				// A opponent list + color
+				if a, ok := index[m.PlayerA_ID]; ok {
+					ensureOpponent(a, m.PlayerB_ID)
+					if m.WhiteID == a.ID {
+						a.ColorHistory += "W"
+					} else if m.BlackID == a.ID {
+						a.ColorHistory += "B"
+					}
+				}
+				// B opponent list + color
+				if b, ok := index[m.PlayerB_ID]; ok {
+					ensureOpponent(b, m.PlayerA_ID)
+					if m.WhiteID == b.ID {
+						b.ColorHistory += "W"
+					} else if m.BlackID == b.ID {
+						b.ColorHistory += "B"
+					}
+				}
+			} else {
+				// BYE: mark HasBye
+				if a, ok := index[m.PlayerA_ID]; ok {
+					a.HasBye = true
+				}
+			}
+		}
+	}
+
+	// Persist rebuilt players
+	return t.SetPlayers(players)
+}
+
+// getPlayerName returns the player name for a given ID, or the ID if not found
+func getPlayerName(players []model.Player, playerID string) string {
+	if playerID == ByePlayerID {
+		return "BYE"
+	}
+	
+	for _, p := range players {
+		if p.ID == playerID {
+			return p.Name
+		}
+	}
+	
+	// Fallback to ID if name not found
+	return playerID
 }

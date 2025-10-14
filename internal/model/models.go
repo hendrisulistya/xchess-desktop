@@ -75,6 +75,7 @@ type Tournament struct {
 	// Core data for Swiss logic (stored as JSON in the database for single record management)
 	PlayersData json.RawMessage `json:"players_data" gorm:"column:players;type:json"`
 	RoundsData  json.RawMessage `json:"rounds_data" gorm:"column:rounds;type:json"`
+	EventsData  json.RawMessage `json:"events_data" gorm:"column:events;type:json"`
 
 	// Summary/Metadata
 	CurrentRound int        `json:"current_round" gorm:"not null"`
@@ -89,4 +90,14 @@ type Tournament struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Event represents a tournament event for audit trail and detailed reporting
+type Event struct {
+	EventID     uuid.UUID       `json:"event_id"`
+	Type        string          `json:"type"`        // e.g., "MATCH_RESULT_RECORDED", "ROUND_STARTED"
+	Timestamp   time.Time       `json:"timestamp"`
+	RoundNumber int             `json:"round_number"`
+	TableNumber int             `json:"table_number,omitempty"`
+	Details     json.RawMessage `json:"details,omitempty"` // JSON payload with event-specific data
 }

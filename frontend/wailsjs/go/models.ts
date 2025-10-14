@@ -97,6 +97,7 @@ export namespace model {
 	    status: string;
 	    players_data: number[];
 	    rounds_data: number[];
+	    events_data: number[];
 	    current_round: number;
 	    total_players: number;
 	    // Go type: time
@@ -123,6 +124,7 @@ export namespace model {
 	        this.status = source["status"];
 	        this.players_data = source["players_data"];
 	        this.rounds_data = source["rounds_data"];
+	        this.events_data = source["events_data"];
 	        this.current_round = source["current_round"];
 	        this.total_players = source["total_players"];
 	        this.start_time = this.convertValues(source["start_time"], null);

@@ -49,3 +49,23 @@ func (t *Tournament) SetRounds(rounds []Round) error {
 	return nil
 	// ... existing code ...
 }
+
+// GetEvents deserializes the EventsData field into a slice of Event structs.
+func (t Tournament) GetEvents() ([]Event, error) {
+	var events []Event
+	if t.EventsData == nil {
+		return events, nil
+	}
+	err := json.Unmarshal(t.EventsData, &events)
+	return events, err
+}
+
+// SetEvents serializes a slice of Event structs into the EventsData field.
+func (t *Tournament) SetEvents(events []Event) error {
+	data, err := json.Marshal(events)
+	if err != nil {
+		return err
+	}
+	t.EventsData = data
+	return nil
+}
