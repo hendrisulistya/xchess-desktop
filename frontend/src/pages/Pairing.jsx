@@ -9,6 +9,7 @@ import {
   GetPlayers,
   GetTournamentInfo,
 } from "../../wailsjs/go/main/App";
+import Logo from "../assets/images/xchess.png";
 
 function Pairing() {
   const navigate = useNavigate();
@@ -67,9 +68,24 @@ function Pairing() {
 
     try {
       setStatus("Menginisialisasi turnamen...");
+
+      // Cek apakah sudah ada tournament info dari CreateTournament
+      let title = "Turnamen Baru";
+      let description = "Turnamen catur dengan sistem Swiss";
+
+      try {
+        const existingTournament = await GetTournamentInfo();
+        if (existingTournament && existingTournament.title) {
+          title = existingTournament.title;
+          description = existingTournament.description || description;
+        }
+      } catch (error) {
+        console.log("No existing tournament found, using defaults");
+      }
+
       const ok = await InitTournamentWithPlayerIDs(
-        "Turnamen Baru",
-        "Turnamen catur dengan sistem Swiss",
+        title,
+        description,
         selectedIDs
       );
       if (!ok) {
@@ -174,31 +190,46 @@ function Pairing() {
         </div>
       </div>
 
-      {/* Header */}
-      <header className="relative z-10 p-6 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+      {/* Header with Logo and Navigation */}
+      <header className="relative z-10 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => navigate("/home")}
-              className="text-3xl hover:scale-110 transition-transform"
-            >
-              ♔
-            </button>
-            <h1 className="text-2xl font-bold tracking-wider">
-              XCHESS - Pairing
-            </h1>
+            <img src={Logo} alt="XCHESS Logo" className="h-8 w-auto" />
           </div>
-          <nav className="flex space-x-6">
-            <button className="text-black text-xl cursor-pointer" title="Login">
-              👤
+
+          {/* Navigation Tabs */}
+          <div className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab("setup")}
+              className={`py-2 px-3 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === "setup"
+                  ? "border-black text-black"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              ♔ Setup Turnamen
             </button>
             <button
-              className="text-black text-xl cursor-pointer"
-              title="Settings"
+              onClick={() => setActiveTab("pairing")}
+              className={`py-2 px-3 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === "pairing"
+                  ? "border-black text-black"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
             >
-              ⚙️
+              ♕ Pairing & Hasil
             </button>
-          </nav>
+            <button
+              onClick={() => setActiveTab("standings")}
+              className={`py-2 px-3 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === "standings"
+                  ? "border-black text-black"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              ♖ Klasemen
+            </button>
+          </div>
         </div>
       </header>
 
@@ -208,42 +239,6 @@ function Pairing() {
           <p className="text-blue-800 text-sm">{status}</p>
         </div>
       )}
-
-      {/* Tab Navigation */}
-      <div className="relative z-10 border-b border-gray-200">
-        <div className="flex space-x-8 px-6">
-          <button
-            onClick={() => setActiveTab("setup")}
-            className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === "setup"
-                ? "border-black text-black"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            ♔ Setup Turnamen
-          </button>
-          <button
-            onClick={() => setActiveTab("pairing")}
-            className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === "pairing"
-                ? "border-black text-black"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            ♕ Pairing & Hasil
-          </button>
-          <button
-            onClick={() => setActiveTab("standings")}
-            className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === "standings"
-                ? "border-black text-black"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            ♖ Klasemen
-          </button>
-        </div>
-      </div>
 
       {/* Main Content */}
       <main className="flex-1 relative z-10 p-6">
@@ -325,13 +320,12 @@ function Pairing() {
         {activeTab === "pairing" && (
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold mb-4">
-                {currentRound
-                  ? `Ronde ${currentRound.round_number}`
-                  : "Pairing Turnamen"}
+              <h2 className="text-3xl font-bold mb-2">
+                {tournamentInfo?.title || "Pairing Turnamen"}
               </h2>
               <p className="text-gray-600">
-                Kelola pairing dan catat hasil pertandingan
+                {tournamentInfo?.description ||
+                  "Kelola pairing dan catat hasil pertandingan"}
               </p>
             </div>
 

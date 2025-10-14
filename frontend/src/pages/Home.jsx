@@ -1,4 +1,3 @@
-import React from "react";
 import { useNavigate } from "react-router";
 
 function Home() {
@@ -31,24 +30,6 @@ function Home() {
           ))}
         </div>
       </div>
-
-      {/* Header */}
-      <header className="relative z-10 p-6 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="text-3xl">♔</div>
-            <h1 className="text-2xl font-bold tracking-wider">XCHESS</h1>
-          </div>
-          <nav className="flex space-x-6">
-            <button className="text-gray-600 hover:text-black transition-colors">
-              Settings
-            </button>
-            <button className="text-gray-600 hover:text-black transition-colors">
-              Login
-            </button>
-          </nav>
-        </div>
-      </header>
 
       {/* Hero Section */}
       <main className="flex-1 relative z-10 flex flex-col items-center justify-center px-6">

@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router";
+import Logo from "../assets/images/xchess.png";
 
 function Start() {
   const navigate = useNavigate();
@@ -26,21 +27,15 @@ function Start() {
 
       {/* Main Content */}
       <div className="text-center relative z-10 flex-1 flex flex-col justify-center">
-        {/* Chess Piece Icon */}
-        <div className="text-8xl mb-6">♔</div>
-
-        {/* Main Title */}
-        <h1 className="text-5xl font-bold mb-2 tracking-wider">XCHESS</h1>
-
-        {/* Slogan */}
-        <p className="text-lg text-gray-600 mb-8 font-light">
-          Chess Tournament Management System
-        </p>
+        {/* Logo Image */}
+        <div className="mb-6">
+          <img src={Logo} alt="XCHESS Logo" className="h-32 w-auto mx-auto" />
+        </div>
 
         {/* Login Button */}
         <button
           onClick={handleLogin}
-          className="bg-black text-white px-12 py-4 text-lg font-medium hover:bg-gray-800 transition-all duration-300 border-2 border-black hover:shadow-lg"
+          className="bg-black text-white px-12 py-4 text-lg font-medium hover:bg-gray-800 transition-all duration-300 border-2 border-black hover:shadow-lg cursor-pointer"
         >
           Mulai
         </button>

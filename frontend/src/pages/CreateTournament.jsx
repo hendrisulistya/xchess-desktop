@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { InitTournament } from "../../wailsjs/go/main/App";
 import { useNavigate } from "react-router";
+import Logo from "../assets/images/xchess.png";
 
 function CreateTournament() {
   const navigate = useNavigate();
@@ -35,11 +36,6 @@ function CreateTournament() {
       return;
     }
 
-    if (!formData.description.trim()) {
-      setMessage("Deskripsi tournament harus diisi");
-      return;
-    }
-
     if (formData.rounds_total < 1 || formData.rounds_total > 20) {
       setMessage("Jumlah ronde harus antara 1-20");
       return;
@@ -56,7 +52,7 @@ function CreateTournament() {
     try {
       const result = await InitTournament(
         formData.title,
-        formData.description,
+        formData.description.trim() || "Tournament catur dengan sistem Swiss",
         []
       );
 
@@ -100,9 +96,8 @@ function CreateTournament() {
       <div className="relative z-10 p-8">
         {/* Top Navigation Bar */}
         <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center space-x-4">
-            <div className="text-2xl">♔</div>
-            <span className="text-xl font-bold tracking-wider">XCHESS</span>
+          <div className="flex items-center space-x-3">
+            <img src={Logo} alt="XCHESS Logo" className="h-8 w-auto" />
           </div>
 
           <div className="flex items-center">
