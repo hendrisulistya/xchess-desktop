@@ -46,30 +46,69 @@ function CreateTournament() {
       return;
     }
 
+    if (!isWailsAvailable()) {
+      setMessage("Aplikasi belum siap. Silakan tunggu sebentar dan coba lagi.");
+      console.error("Wails runtime not available");
+      return;
+    }
+
     setIsLoading(true);
     setMessage("Membuat tournament...");
 
     try {
+      const description =
+        formData.description.trim() || "Tournament catur dengan sistem Swiss";
+
+      console.log("Creating tournament with:", {
+        title: formData.title.trim(),
+        description: description,
+        playerNames: [],
+      });
+
       const result = await InitTournament(
-        formData.title,
-        formData.description.trim() || "Tournament catur dengan sistem Swiss",
+        formData.title.trim(),
+        description,
         []
       );
+
+      console.log("InitTournament result:", result);
 
       if (result) {
         setMessage("Tournament berhasil dibuat!");
         setTimeout(() => {
-          navigate("/pairing");
-        }, 2000);
+          navigate("/setup-tournament");
+        }, 1500);
       } else {
         setMessage("Gagal membuat tournament. Silakan coba lagi.");
+        console.error("InitTournament returned false");
       }
     } catch (error) {
       console.error("Error creating tournament:", error);
-      setMessage("Terjadi kesalahan saat membuat tournament.");
+
+      if (error.message) {
+        if (error.message.includes("Title is required")) {
+          setMessage("Nama tournament harus diisi");
+        } else if (error.message.includes("Description is required")) {
+          setMessage("Deskripsi tournament harus diisi");
+        } else {
+          setMessage(`Terjadi kesalahan: ${error.message}`);
+        }
+      } else {
+        setMessage("Terjadi kesalahan saat membuat tournament.");
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const isWailsAvailable = () => {
+    return (
+      typeof window !== "undefined" &&
+      window.go &&
+      window.go.main &&
+      window.go.main.App &&
+      window.go.main.App.InitTournament
+    );
   };
 
   const handleBack = () => {
