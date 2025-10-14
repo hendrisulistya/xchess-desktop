@@ -17,6 +17,14 @@ import (
 	"xchess-desktop/internal/pkg/utils"
 
 	"github.com/google/uuid"
+	"github.com/johnfercher/maroto/v2"
+	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/row"
+	"github.com/johnfercher/maroto/v2/pkg/components/text"
+	"github.com/johnfercher/maroto/v2/pkg/config"
+	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
+	"github.com/johnfercher/maroto/v2/pkg/props"
 )
 
 // GetPlayers deserializes the PlayersData field into a slice of Player structs.
@@ -569,30 +577,30 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 					var incompleteMatches []string
 					var totalMatches int
 					var completedMatches int
-					
+
 					for _, m := range r.Matches {
 						totalMatches++
 						if m.Result == "" {
 							// Format player names for better readability
 							playerAName := getPlayerName(players, m.PlayerA_ID)
 							playerBName := getPlayerName(players, m.PlayerB_ID)
-							
+
 							if m.PlayerB_ID == ByePlayerID {
-								incompleteMatches = append(incompleteMatches, 
+								incompleteMatches = append(incompleteMatches,
 									fmt.Sprintf("Table %d: %s (BYE)", m.TableNumber, playerAName))
 							} else {
-								incompleteMatches = append(incompleteMatches, 
+								incompleteMatches = append(incompleteMatches,
 									fmt.Sprintf("Table %d: %s vs %s", m.TableNumber, playerAName, playerBName))
 							}
 						} else {
 							completedMatches++
 						}
 					}
-					
+
 					// Build detailed error message
-					errorMsg := fmt.Sprintf("Cannot advance: Round %d is not complete (%d/%d matches finished).\n", 
+					errorMsg := fmt.Sprintf("Cannot advance: Round %d is not complete (%d/%d matches finished).\n",
 						t.CurrentRound, completedMatches, totalMatches)
-					
+
 					if len(incompleteMatches) > 0 {
 						errorMsg += "Incomplete matches:\n"
 						for _, match := range incompleteMatches {
@@ -601,8 +609,8 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 						// Remove trailing newline
 						errorMsg = strings.TrimSuffix(errorMsg, "\n")
 					}
-					
-					return fmt.Errorf(errorMsg)
+
+					return fmt.Errorf("%s", errorMsg)
 				}
 				break
 			}
@@ -842,13 +850,531 @@ func getPlayerName(players []model.Player, playerID string) string {
 	if playerID == ByePlayerID {
 		return "BYE"
 	}
-	
+
 	for _, p := range players {
 		if p.ID == playerID {
 			return p.Name
 		}
 	}
-	
+
 	// Fallback to ID if name not found
 	return playerID
+}
+
+// CancelCurrentRound reverts the tournament to the previous round state.
+// This removes the current round's pairings and decrements CurrentRound.
+// Can only be used if the current round has no recorded results.
+func CancelCurrentRound(t *model.Tournament) error {
+	if t.CurrentRound <= 0 {
+		return fmt.Errorf("cannot cancel: no rounds to cancel (current round: %d)", t.CurrentRound)
+	}
+
+	rounds, err := t.GetRounds()
+	if err != nil {
+		return err
+	}
+
+	// Find the current round
+	var currentRoundIndex = -1
+	for i, r := range rounds {
+		if r.RoundNumber == t.CurrentRound {
+			currentRoundIndex = i
+			break
+		}
+	}
+
+	if currentRoundIndex == -1 {
+		return fmt.Errorf("current round %d not found in rounds data", t.CurrentRound)
+	}
+
+	currentRound := rounds[currentRoundIndex]
+
+	// Check if current round has any recorded results
+	for _, m := range currentRound.Matches {
+		if m.Result != "" {
+			return fmt.Errorf("cannot cancel round %d: matches have recorded results. Please clear all results first", t.CurrentRound)
+		}
+	}
+
+	// Remove the current round from rounds slice
+	rounds = append(rounds[:currentRoundIndex], rounds[currentRoundIndex+1:]...)
+
+	// Persist updated rounds
+	if err := t.SetRounds(rounds); err != nil {
+		return err
+	}
+
+	// Decrement current round
+	t.CurrentRound--
+
+	// Add event log for cancellation
+	events, _ := t.GetEvents()
+	detail := struct {
+		CancelledRound int    `json:"cancelled_round"`
+		Reason         string `json:"reason"`
+	}{
+		CancelledRound: currentRound.RoundNumber,
+		Reason:         "Round cancelled and reverted",
+	}
+	detailJSON, _ := json.Marshal(detail)
+	events = append(events, model.Event{
+		EventID:     uuid.New(),
+		Type:        "ROUND_CANCELLED",
+		Timestamp:   time.Now(),
+		RoundNumber: currentRound.RoundNumber,
+		TableNumber: 0, // Not applicable for round-level events
+		Details:     detailJSON,
+	})
+	if err := t.SetEvents(events); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ExportRoundPairingsToPDF generates a PDF file with tournament round pairings
+// Returns the PDF bytes and any error encountered
+func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, error) {
+	// Get tournament data
+	players, err := t.GetPlayers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get players: %w", err)
+	}
+
+	rounds, err := t.GetRounds()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rounds: %w", err)
+	}
+
+	// Find the specified round
+	var targetRound *model.Round
+	for _, r := range rounds {
+		if r.RoundNumber == roundNumber {
+			targetRound = &r
+			break
+		}
+	}
+
+	if targetRound == nil {
+		return nil, fmt.Errorf("round %d not found", roundNumber)
+	}
+
+	// Create player lookup map for scores
+	playerMap := make(map[string]model.Player)
+	for _, p := range players {
+		playerMap[p.ID] = p
+	}
+
+	// Create PDF configuration
+	cfg := config.NewBuilder().
+		WithPageNumber().
+		Build()
+
+	// Create maroto instance
+	m := maroto.New(cfg)
+
+	// Add title
+	m.AddRows(
+		row.New(20).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Tournament: %s", t.Title), props.Text{
+					Top:   3,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  16,
+				}),
+			),
+		),
+	)
+
+	// Add tournament ID
+	m.AddRows(
+		row.New(10).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Tournament ID: %s", t.ID.String()), props.Text{
+					Top:   2,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+		),
+	)
+
+	// Add round number
+	m.AddRows(
+		row.New(15).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Round %d", roundNumber), props.Text{
+					Top:   3,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  14,
+				}),
+			),
+		),
+	)
+
+	// Add table headers
+	m.AddRows(
+		row.New(12).Add(
+			col.New(2).Add(
+				text.New("Table", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+			col.New(3).Add(
+				text.New("White Player", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+			col.New(2).Add(
+				text.New("White Points", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+			col.New(3).Add(
+				text.New("Black Player", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+			col.New(2).Add(
+				text.New("Black Points", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+		),
+	)
+
+	// Sort matches by table number
+	matches := make([]model.Match, len(targetRound.Matches))
+	copy(matches, targetRound.Matches)
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].TableNumber < matches[j].TableNumber
+	})
+
+	// Add match data rows
+	for _, match := range matches {
+		whitePlayer := getPlayerName(players, match.WhiteID)
+		blackPlayer := getPlayerName(players, match.BlackID)
+
+		// Handle BYE matches
+		if match.PlayerB_ID == ByePlayerID {
+			blackPlayer = "BYE"
+		}
+
+		// Get current points for players
+		whitePoints := "0.0"
+		blackPoints := "0.0"
+
+		if p, exists := playerMap[match.WhiteID]; exists {
+			whitePoints = fmt.Sprintf("%.1f", p.Score)
+		}
+
+		if match.BlackID != "" && match.PlayerB_ID != ByePlayerID {
+			if p, exists := playerMap[match.BlackID]; exists {
+				blackPoints = fmt.Sprintf("%.1f", p.Score)
+			}
+		} else if match.PlayerB_ID == ByePlayerID {
+			blackPoints = "-"
+		}
+
+		m.AddRows(
+			row.New(8).Add(
+				col.New(2).Add(
+					text.New(fmt.Sprintf("%d", match.TableNumber), props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(3).Add(
+					text.New(whitePlayer, props.Text{
+						Top:   1,
+						Align: align.Left,
+						Size:  9,
+					}),
+				),
+				col.New(2).Add(
+					text.New(whitePoints, props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(3).Add(
+					text.New(blackPlayer, props.Text{
+						Top:   1,
+						Align: align.Left,
+						Size:  9,
+					}),
+				),
+				col.New(2).Add(
+					text.New(blackPoints, props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+			),
+		)
+	}
+
+	// Add footer with generation timestamp
+	m.AddRows(
+		row.New(15).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Generated on: %s", time.Now().Format("2006-01-02 15:04:05")), props.Text{
+					Top:   5,
+					Align: align.Center,
+					Size:  8,
+				}),
+			),
+		),
+	)
+
+	// Generate PDF
+	document, err := m.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PDF: %w", err)
+	}
+
+	return document.GetBytes(), nil
+}
+
+// ExportAllRoundsPairingsToPDF generates a PDF file with all tournament rounds pairings
+func ExportAllRoundsPairingsToPDF(t *model.Tournament) ([]byte, error) {
+	rounds, err := t.GetRounds()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rounds: %w", err)
+	}
+
+	if len(rounds) == 0 {
+		return nil, fmt.Errorf("no rounds found in tournament")
+	}
+
+	players, err := t.GetPlayers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get players: %w", err)
+	}
+
+	// Create player lookup map
+	playerMap := make(map[string]model.Player)
+	for _, p := range players {
+		playerMap[p.ID] = p
+	}
+
+	// Create PDF configuration
+	cfg := config.NewBuilder().
+		WithPageNumber().
+		Build()
+
+	m := maroto.New(cfg)
+
+	// Add main title
+	m.AddRows(
+		row.New(20).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Tournament: %s - All Rounds", t.Title), props.Text{
+					Top:   3,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  16,
+				}),
+			),
+		),
+	)
+
+	// Add tournament ID
+	m.AddRows(
+		row.New(10).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Tournament ID: %s", t.ID.String()), props.Text{
+					Top:   2,
+					Align: align.Center,
+					Size:  10,
+				}),
+			),
+		),
+	)
+
+	// Process each round
+	for i, round := range rounds {
+		if i > 0 {
+			// Add page break between rounds (except for first round)
+			m.AddRows(row.New(10))
+		}
+
+		// Add round title
+		m.AddRows(
+			row.New(15).Add(
+				col.New(12).Add(
+					text.New(fmt.Sprintf("Round %d", round.RoundNumber), props.Text{
+						Top:   3,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  14,
+					}),
+				),
+			),
+		)
+
+		// Add table headers
+		m.AddRows(
+			row.New(12).Add(
+				col.New(2).Add(
+					text.New("Table", props.Text{
+						Top:   2,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  10,
+					}),
+				),
+				col.New(3).Add(
+					text.New("White Player", props.Text{
+						Top:   2,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  10,
+					}),
+				),
+				col.New(2).Add(
+					text.New("White Points", props.Text{
+						Top:   2,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  10,
+					}),
+				),
+				col.New(3).Add(
+					text.New("Black Player", props.Text{
+						Top:   2,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  10,
+					}),
+				),
+				col.New(2).Add(
+					text.New("Black Points", props.Text{
+						Top:   2,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  10,
+					}),
+				),
+			),
+		)
+
+		// Sort matches by table number
+		matches := make([]model.Match, len(round.Matches))
+		copy(matches, round.Matches)
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].TableNumber < matches[j].TableNumber
+		})
+
+		// Add match data rows
+		for _, match := range matches {
+			whitePlayer := getPlayerName(players, match.WhiteID)
+			blackPlayer := getPlayerName(players, match.BlackID)
+
+			if match.PlayerB_ID == ByePlayerID {
+				blackPlayer = "BYE"
+			}
+
+			whitePoints := "0.0"
+			blackPoints := "0.0"
+
+			if p, exists := playerMap[match.WhiteID]; exists {
+				whitePoints = fmt.Sprintf("%.1f", p.Score)
+			}
+
+			if match.BlackID != "" && match.PlayerB_ID != ByePlayerID {
+				if p, exists := playerMap[match.BlackID]; exists {
+					blackPoints = fmt.Sprintf("%.1f", p.Score)
+				}
+			} else if match.PlayerB_ID == ByePlayerID {
+				blackPoints = "-"
+			}
+
+			m.AddRows(
+				row.New(8).Add(
+					col.New(2).Add(
+						text.New(fmt.Sprintf("%d", match.TableNumber), props.Text{
+							Top:   1,
+							Align: align.Center,
+							Size:  9,
+						}),
+					),
+					col.New(3).Add(
+						text.New(whitePlayer, props.Text{
+							Top:   1,
+							Align: align.Left,
+							Size:  9,
+						}),
+					),
+					col.New(2).Add(
+						text.New(whitePoints, props.Text{
+							Top:   1,
+							Align: align.Center,
+							Size:  9,
+						}),
+					),
+					col.New(3).Add(
+						text.New(blackPlayer, props.Text{
+							Top:   1,
+							Align: align.Left,
+							Size:  9,
+						}),
+					),
+					col.New(2).Add(
+						text.New(blackPoints, props.Text{
+							Top:   1,
+							Align: align.Center,
+							Size:  9,
+						}),
+					),
+				),
+			)
+		}
+
+		// Add spacing between rounds
+		if i < len(rounds)-1 {
+			m.AddRows(row.New(10))
+		}
+	}
+
+	// Add footer
+	m.AddRows(
+		row.New(15).Add(
+			col.New(12).Add(
+				text.New(fmt.Sprintf("Generated on: %s", time.Now().Format("2006-01-02 15:04:05")), props.Text{
+					Top:   5,
+					Align: align.Center,
+					Size:  8,
+				}),
+			),
+		),
+	)
+
+	// Generate PDF
+	document, err := m.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PDF: %w", err)
+	}
+
+	return document.GetBytes(), nil
 }
