@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"xchess-desktop/internal/auth"
 	"xchess-desktop/internal/database"
@@ -208,4 +209,43 @@ func (a *App) InitTournamentWithPlayerIDs(title string, description string, play
 	}
 	a.currentTournament = t
 	return true, nil
+}
+
+// CancelCurrentRound cancels the current round and reverts to the previous round state.
+// Returns true if the round was successfully cancelled.
+func (a *App) CancelCurrentRound() (bool, error) {
+	if a.currentTournament == nil {
+		return false, nil
+	}
+	if err := tournament.CancelCurrentRound(a.currentTournament); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ExportRoundPairingsToPDF exports the pairings for a specific round to PDF.
+// Returns the PDF data as bytes.
+func (a *App) ExportRoundPairingsToPDF(roundNumber int) ([]byte, error) {
+	if a.currentTournament == nil {
+		return nil, nil
+	}
+	return tournament.ExportRoundPairingsToPDF(a.currentTournament, roundNumber)
+}
+
+// ExportAllRoundsPairingsToPDF exports all rounds pairings to a single PDF.
+// Returns the PDF data as bytes.
+func (a *App) ExportAllRoundsPairingsToPDF() ([]byte, error) {
+	if a.currentTournament == nil {
+		return nil, nil
+	}
+	return tournament.ExportAllRoundsPairingsToPDF(a.currentTournament)
+}
+
+// AddPlayer adds a new player to the current tournament.
+// Returns the player ID if successful.
+func (a *App) AddPlayer(name string, rating int) (string, error) {
+	if a.currentTournament == nil {
+		return "", fmt.Errorf("no active tournament")
+	}
+	return tournament.AddPlayer(a.currentTournament, name, rating)
 }
