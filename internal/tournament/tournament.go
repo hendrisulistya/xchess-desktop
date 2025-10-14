@@ -15,6 +15,8 @@ import (
 
 	"xchess-desktop/internal/model"
 	"xchess-desktop/internal/pkg/utils"
+
+	"github.com/google/uuid"
 )
 
 // GetPlayers deserializes the PlayersData field into a slice of Player structs.
@@ -687,4 +689,52 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 	t.TotalPlayers = len(players)
 
 	return nil
+}
+
+// AddPlayer adds a new player to the tournament with an auto-generated UUID.
+// Returns the generated player ID and an error if the tournament has already started.
+func AddPlayer(t *model.Tournament, name string, rating int) (string, error) {
+	// Validate required fields
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("player name is required")
+	}
+
+	// Prevent adding players after tournament has started
+	if t.CurrentRound > 0 {
+		return "", fmt.Errorf("cannot add players after tournament has started (current round: %d)", t.CurrentRound)
+	}
+
+	// Get current players
+	players, err := t.GetPlayers()
+	if err != nil {
+		return "", err
+	}
+
+	// Generate new UUID for the player
+	playerID := uuid.NewString()
+
+	// Create new player with initialized fields
+	newPlayer := model.Player{
+		ID:           playerID,
+		Name:         name,
+		Score:        0.0,
+		OpponentIDs:  []string{},
+		Buchholz:     0.0,
+		ColorHistory: "",
+		HasBye:       false,
+		Rating:       rating,
+	}
+
+	// Add the new player
+	players = append(players, newPlayer)
+
+	// Update tournament
+	if err := t.SetPlayers(players); err != nil {
+		return "", err
+	}
+
+	// Update total players count
+	t.TotalPlayers = len(players)
+
+	return playerID, nil
 }
