@@ -24,7 +24,7 @@ function Klasemen() {
       ps.sort((a, b) => {
         if (a.score !== b.score) return b.score - a.score;
         if (a.buchholz !== b.buchholz) return b.buchholz - a.buchholz;
-        if (a.rating !== b.rating) return b.rating - a.rating;
+        // Remove rating sort since we don't have rating anymore
         return a.name.localeCompare(b.name);
       });
       setStandings(ps);
@@ -118,10 +118,7 @@ function Klasemen() {
                         Buchholz
                       </th>
                       <th className="px-4 py-3 text-center font-medium">
-                        Rating
-                      </th>
-                      <th className="px-4 py-3 text-center font-medium">
-                        Status
+                        Club / Domisili
                       </th>
                     </tr>
                   </thead>
@@ -148,32 +145,12 @@ function Klasemen() {
                         <td className="px-4 py-4 text-center">
                           {player.buchholz.toFixed(1)}
                         </td>
-                        <td className="px-4 py-4 text-center">
-                          {player.rating}
-                        </td>
+                        <td className="px-4 py-4 text-center">{player.club}</td>
                         <td className="px-4 py-4 text-center">
                           <div className="flex flex-col items-center space-y-1">
                             {player.has_bye && (
                               <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
                                 BYE
-                              </span>
-                            )}
-                            {player.color_history && (
-                              <span className="text-xs text-gray-500">
-                                {player.color_history
-                                  .split("")
-                                  .map((color, i) => (
-                                    <span
-                                      key={i}
-                                      className={
-                                        color === "W"
-                                          ? "text-gray-800"
-                                          : "text-gray-400"
-                                      }
-                                    >
-                                      {color === "W" ? "♔" : "♚"}
-                                    </span>
-                                  ))}
                               </span>
                             )}
                           </div>

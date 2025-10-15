@@ -6,6 +6,9 @@ import {
   RecordResult,
   GetPlayers,
   GetTournamentInfo,
+  ExportRoundPairingsToPDF,
+  ExportAllRoundsPairingsToPDF,
+  GoBackToPreviousRound,
 } from "../../wailsjs/go/main/App";
 import Navbar from "../components/Navbar";
 
@@ -66,6 +69,34 @@ function Pairing() {
     }
   };
 
+  const goBackToPreviousRound = async () => {
+    console.log("DEBUG: goBackToPreviousRound called in frontend");
+    console.log("DEBUG: Current round before going back:", currentRound);
+
+    // Sementara skip konfirmasi untuk testing
+    console.log("DEBUG: Skipping confirmation dialog for testing");
+
+    try {
+      setStatus("Kembali ke ronde sebelumnya...");
+      console.log("DEBUG: Calling GoBackToPreviousRound backend function");
+
+      const result = await GoBackToPreviousRound();
+      console.log("DEBUG: GoBackToPreviousRound result:", result);
+
+      if (result) {
+        setStatus("Berhasil kembali ke ronde sebelumnya");
+        console.log("DEBUG: Success, refreshing data");
+        await refreshRoundAndStandings();
+      } else {
+        console.log("DEBUG: Backend returned false");
+        setStatus("Gagal kembali ke ronde sebelumnya");
+      }
+    } catch (error) {
+      console.error("DEBUG: Error in goBackToPreviousRound:", error);
+      setStatus(`Error: ${error.toString()}`);
+    }
+  };
+
   const recordResult = async (tableNumber, result) => {
     try {
       setStatus(`Mencatat hasil meja ${tableNumber}...`);
@@ -83,11 +114,23 @@ function Pairing() {
   };
 
   const refreshRoundAndStandings = async () => {
+    console.log("DEBUG: refreshRoundAndStandings called");
     try {
+      console.log("DEBUG: Getting current round");
       const round = await GetCurrentRound();
+      console.log("DEBUG: Current round received:", round);
       setCurrentRound(round);
 
+      // Jika tidak ada ronde aktif setelah pembatalan, coba ambil ronde sebelumnya
+      if (!round || !round.matches || round.matches.length === 0) {
+        console.log("No active round found, checking for previous rounds...");
+        // Backend harus menyediakan fungsi untuk mendapatkan ronde sebelumnya
+        // atau GetCurrentRound harus mengembalikan ronde terakhir yang valid
+      }
+
+      console.log("DEBUG: Getting players");
       const ps = await GetPlayers();
+      console.log("DEBUG: Players received:", ps);
       const map = {};
       (ps || []).forEach((p) => (map[p.id] = p.name));
       setIdToName(map);
@@ -99,6 +142,7 @@ function Pairing() {
         return a.name.localeCompare(b.name);
       });
       setStandings(ps);
+      console.log("DEBUG: Data refresh completed successfully");
     } catch (error) {
       console.error("Error refreshing data:", error);
       setStatus("Error saat memperbarui data");
@@ -112,6 +156,90 @@ function Pairing() {
       return `${baseStyle} bg-black border-black text-white hover:bg-gray-800`;
     } else {
       return `${baseStyle} bg-white border-black text-black hover:bg-gray-100`;
+    }
+  };
+
+  const exportCurrentRoundToPDF = async () => {
+    try {
+      if (!currentRound) {
+        setStatus("Tidak ada ronde aktif untuk diekspor");
+        return;
+      }
+
+      setStatus("Mengekspor ronde ke PDF...");
+
+      try {
+        const pdfBytes = await ExportRoundPairingsToPDF(
+          currentRound.round_number
+        );
+
+        // Check if we got valid PDF data
+        if (!pdfBytes || pdfBytes.length === 0) {
+          setStatus("Gagal mengekspor ronde ke PDF - tidak ada data");
+          return;
+        }
+
+        // Create blob and download
+        const blob = new Blob([new Uint8Array(pdfBytes)], {
+          type: "application/pdf",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `Ronde_${currentRound.round_number}_${
+          tournamentInfo?.title || "Tournament"
+        }.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setStatus("Ronde berhasil diekspor ke PDF");
+      } catch (backendError) {
+        console.error("Backend error:", backendError);
+        setStatus(`Error saat mengekspor: ${backendError.toString()}`);
+      }
+    } catch (error) {
+      console.error("Error exporting round to PDF:", error);
+      setStatus("Error saat mengekspor ronde ke PDF");
+    }
+  };
+
+  const exportAllRoundsToPDF = async () => {
+    try {
+      setStatus("Mengekspor semua ronde ke PDF...");
+
+      try {
+        const pdfBytes = await ExportAllRoundsPairingsToPDF();
+
+        // Check if we got valid PDF data
+        if (!pdfBytes || pdfBytes.length === 0) {
+          setStatus("Gagal mengekspor semua ronde ke PDF - tidak ada data");
+          return;
+        }
+
+        // Create blob and download
+        const blob = new Blob([new Uint8Array(pdfBytes)], {
+          type: "application/pdf",
+        });
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = `Semua_Ronde_${
+          tournamentInfo?.title || "Tournament"
+        }.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setStatus("Semua ronde berhasil diekspor ke PDF");
+      } catch (backendError) {
+        console.error("Backend error:", backendError);
+        setStatus(`Error saat mengekspor: ${backendError.toString()}`);
+      }
+    } catch (error) {
+      console.error("Error exporting all rounds to PDF:", error);
+      setStatus("Error saat mengekspor semua ronde ke PDF");
     }
   };
 
@@ -176,10 +304,26 @@ function Pairing() {
           ) : (
             <div>
               <div className="bg-white border-2 border-black overflow-hidden">
-                <div className="bg-black text-white p-4">
+                <div className="bg-black text-white p-4 flex justify-between items-center">
                   <h3 className="text-lg font-bold">
                     Ronde {currentRound.round_number} - Pairing
                   </h3>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={exportCurrentRoundToPDF}
+                      className="bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-100 transition-colors rounded-md border border-gray-300"
+                      disabled={!currentRound}
+                    >
+                      Export Ronde Ini
+                    </button>
+                    <button
+                      onClick={exportAllRoundsToPDF}
+                      className="bg-gray-800 text-white px-4 py-2 text-sm font-medium hover:bg-gray-700 transition-colors rounded-md border border-gray-600"
+                      disabled={!tournamentInfo}
+                    >
+                      Export Semua Ronde
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -317,12 +461,21 @@ function Pairing() {
               </div>
 
               <div className="text-center mt-6">
-                <button
-                  onClick={nextRound}
-                  className="bg-black text-white px-8 py-3 font-medium hover:bg-gray-800 transition-colors"
-                >
-                  Generate Ronde Berikutnya
-                </button>
+                {/* Tombol utama */}
+                <div className="flex justify-center space-x-4">
+                  <button
+                    onClick={nextRound}
+                    className="bg-black text-white px-8 py-3 font-medium hover:bg-gray-800 transition-colors rounded-md border border-black"
+                  >
+                    Generate Ronde Berikutnya
+                  </button>
+                  <button
+                    onClick={goBackToPreviousRound}
+                    className="bg-white text-black px-8 py-3 font-medium hover:bg-gray-100 transition-colors rounded-md border border-black"
+                  >
+                    Kembali ke Ronde Sebelumnya
+                  </button>
+                </div>
               </div>
             </div>
           )}

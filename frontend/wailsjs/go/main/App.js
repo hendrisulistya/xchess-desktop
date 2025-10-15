@@ -14,6 +14,14 @@ export function CheckAdminCredentials(arg1, arg2) {
   return window['go']['main']['App']['CheckAdminCredentials'](arg1, arg2);
 }
 
+export function ClearAllResultsInRound(arg1) {
+  return window['go']['main']['App']['ClearAllResultsInRound'](arg1);
+}
+
+export function ClearMatchResult(arg1, arg2) {
+  return window['go']['main']['App']['ClearMatchResult'](arg1, arg2);
+}
+
 export function ExportAllRoundsPairingsToPDF() {
   return window['go']['main']['App']['ExportAllRoundsPairingsToPDF']();
 }
@@ -36,6 +44,10 @@ export function GetStandings() {
 
 export function GetTournamentInfo() {
   return window['go']['main']['App']['GetTournamentInfo']();
+}
+
+export function GoBackToPreviousRound() {
+  return window['go']['main']['App']['GoBackToPreviousRound']();
 }
 
 export function InitTournament(arg1, arg2, arg3) {

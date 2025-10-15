@@ -38,7 +38,7 @@ export namespace model {
 	    buchholz: number;
 	    color_history: string;
 	    has_bye: boolean;
-	    rating?: number;
+	    club?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Player(source);
@@ -53,7 +53,7 @@ export namespace model {
 	        this.buchholz = source["buchholz"];
 	        this.color_history = source["color_history"];
 	        this.has_bye = source["has_bye"];
-	        this.rating = source["rating"];
+	        this.club = source["club"];
 	    }
 	}
 	export class Round {

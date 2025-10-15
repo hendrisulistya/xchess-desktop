@@ -5,6 +5,7 @@ import {
   InitTournamentWithPlayerIDs,
   NextRound,
   GetTournamentInfo,
+  AddPlayer,
 } from "../../wailsjs/go/main/App";
 import Navbar from "../components/Navbar";
 
@@ -14,6 +15,15 @@ function SetupTournament() {
   const [selectedIDs, setSelectedIDs] = useState([]);
   const [status, setStatus] = useState("");
   const [activeTab, setActiveTab] = useState("setup");
+
+  // State untuk form tambah pemain
+  const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
+  // State untuk form tambah pemain
+  const [newPlayer, setNewPlayer] = useState({
+    name: "",
+    club: "",
+  });
+  const [isAddingPlayer, setIsAddingPlayer] = useState(false);
 
   useEffect(() => {
     loadPlayers();
@@ -38,6 +48,53 @@ function SetupTournament() {
       console.error("Error loading players:", error);
       setStatus("Error loading players");
     }
+  };
+
+  // Fungsi untuk menambah pemain baru
+  const handleAddPlayer = async (e) => {
+    e.preventDefault();
+
+    if (!newPlayer.name.trim()) {
+      setStatus("Nama pemain tidak boleh kosong");
+      return;
+    }
+
+    try {
+      setIsAddingPlayer(true);
+      setStatus("Menambahkan pemain baru...");
+
+      const playerID = await AddPlayer(
+        newPlayer.name.trim(),
+        newPlayer.club.trim()
+      );
+
+      if (playerID) {
+        setStatus(`Pemain ${newPlayer.name} berhasil ditambahkan`);
+
+        // Reset form
+        setNewPlayer({ name: "", club: "" });
+        setShowAddPlayerForm(false);
+
+        // Reload players list
+        await loadPlayers();
+
+        // Clear status after 3 seconds
+        setTimeout(() => setStatus(""), 3000);
+      } else {
+        setStatus("Gagal menambahkan pemain");
+      }
+    } catch (error) {
+      console.error("Error adding player:", error);
+      setStatus("Error saat menambahkan pemain: " + error.message);
+    } finally {
+      setIsAddingPlayer(false);
+    }
+  };
+
+  const handleCancelAddPlayer = () => {
+    setNewPlayer({ name: "", rating: 1200 });
+    setShowAddPlayerForm(false);
+    setStatus("");
   };
 
   const toggleSelect = (id) => {
@@ -143,6 +200,80 @@ function SetupTournament() {
             </p>
           </div>
 
+          {/* Form Tambah Pemain Baru */}
+          <div className="bg-white border-2 border-black p-6 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Tambah Pemain Baru</h3>
+              <button
+                onClick={() => setShowAddPlayerForm(!showAddPlayerForm)}
+                className="px-4 py-2 text-sm font-medium border-2 border-black bg-white text-black hover:bg-gray-100 transition-colors"
+              >
+                {showAddPlayerForm ? "Tutup Form" : "Tambah Pemain"}
+              </button>
+            </div>
+
+            {showAddPlayerForm && (
+              <form onSubmit={handleAddPlayer} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Nama Pemain *
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayer.name}
+                      onChange={(e) =>
+                        setNewPlayer({ ...newPlayer, name: e.target.value })
+                      }
+                      placeholder="Masukkan nama pemain"
+                      className="w-full px-3 py-2 border-2 border-gray-300 focus:border-black focus:outline-none"
+                      required
+                      disabled={isAddingPlayer}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Club
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayer.club}
+                      onChange={(e) =>
+                        setNewPlayer({ ...newPlayer, club: e.target.value })
+                      }
+                      placeholder="Masukkan nama club"
+                      className="w-full px-3 py-2 border-2 border-gray-300 focus:border-black focus:outline-none"
+                      disabled={isAddingPlayer}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex space-x-4">
+                  <button
+                    type="submit"
+                    disabled={isAddingPlayer || !newPlayer.name.trim()}
+                    className={`px-6 py-2 font-medium transition-all ${
+                      isAddingPlayer || !newPlayer.name.trim()
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-black text-white hover:bg-gray-800"
+                    }`}
+                  >
+                    {isAddingPlayer ? "Menambahkan..." : "Tambah Pemain"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelAddPlayer}
+                    disabled={isAddingPlayer}
+                    className="px-6 py-2 font-medium border-2 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          {/* Pilih Peserta */}
           <div className="bg-white border-2 border-black p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">
@@ -159,9 +290,12 @@ function SetupTournament() {
             </div>
 
             {players.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
-                Tidak ada pemain tersedia
-              </p>
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">Tidak ada pemain tersedia</p>
+                <p className="text-sm text-gray-400">
+                  Tambahkan pemain baru menggunakan form di atas
+                </p>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 {players.map((player) => (
@@ -182,7 +316,7 @@ function SetupTournament() {
                     <div>
                       <div className="font-medium">{player.name}</div>
                       <div className="text-sm text-gray-500">
-                        Rating: {player.rating}
+                        Club: {player.club || "Tidak ada club"}
                       </div>
                     </div>
                   </label>

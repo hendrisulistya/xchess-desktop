@@ -38,7 +38,7 @@ type Player struct {
 	Buchholz     float64  `json:"buchholz"`                      // Primary Tie-breaker: Sum of opponents' scores
 	ColorHistory string   `json:"color_history"`                 // E.g., "WBW" (White, Black, White) to track color imbalance
 	HasBye       bool     `json:"has_bye"`                       // True if the player has received a bye
-	Rating       int      `json:"rating,omitempty"`              // Initial seeding (optional)
+	Club         string   `json:"club,omitempty"`                // Player's chess club (optional)
 }
 
 // Match represents the outcome of a single game between two players.

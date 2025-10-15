@@ -132,9 +132,6 @@ func (a SwissToolAdapter) GeneratePairings(t *model.Tournament, players []model.
 		if ps[i].Buchholz != ps[j].Buchholz {
 			return ps[i].Buchholz > ps[j].Buchholz
 		}
-		if ps[i].Rating != ps[j].Rating {
-			return ps[i].Rating > ps[j].Rating
-		}
 		return ps[i].Name < ps[j].Name
 	})
 
@@ -530,7 +527,7 @@ func UpdateStandings(t *model.Tournament) error {
 	return t.SetPlayers(players)
 }
 
-// GetStandings returns the players sorted by Score desc, Buchholz desc, Rating desc, Name asc.
+// GetStandings returns the players sorted by Score desc, Buchholz desc, Name asc.
 // It recomputes Buchholz before sorting to ensure tie-breaks are up-to-date.
 func GetStandings(t *model.Tournament) ([]model.Player, error) {
 	if err := UpdateStandings(t); err != nil {
@@ -546,9 +543,6 @@ func GetStandings(t *model.Tournament) ([]model.Player, error) {
 		}
 		if players[i].Buchholz != players[j].Buchholz {
 			return players[i].Buchholz > players[j].Buchholz
-		}
-		if players[i].Rating != players[j].Rating {
-			return players[i].Rating > players[j].Rating
 		}
 		return players[i].Name < players[j].Name
 	})
@@ -725,7 +719,7 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 
 // AddPlayer adds a new player to the tournament with an auto-generated UUID.
 // Returns the generated player ID and an error if the tournament has already started.
-func AddPlayer(t *model.Tournament, name string, rating int) (string, error) {
+func AddPlayer(t *model.Tournament, name string, club string) (string, error) {
 	// Validate required fields
 	if strings.TrimSpace(name) == "" {
 		return "", fmt.Errorf("player name is required")
@@ -754,7 +748,7 @@ func AddPlayer(t *model.Tournament, name string, rating int) (string, error) {
 		Buchholz:     0.0,
 		ColorHistory: "",
 		HasBye:       false,
-		Rating:       rating,
+		Club:         club,
 	}
 
 	// Add the new player
@@ -796,7 +790,13 @@ func RecomputePlayersFromRounds(t *model.Tournament) error {
 	}
 
 	// Apply contributions from all matches that have a recorded result
+	// BUT ONLY from rounds <= current round
 	for _, r := range rounds {
+		// Skip rounds after current round
+		if r.RoundNumber > t.CurrentRound {
+			continue
+		}
+		
 		for _, m := range r.Matches {
 			if m.Result == "" {
 				continue
@@ -859,6 +859,186 @@ func getPlayerName(players []model.Player, playerID string) string {
 
 	// Fallback to ID if name not found
 	return playerID
+}
+
+// ClearMatchResult clears the result of a specific match in a round
+func ClearMatchResult(t *model.Tournament, roundNumber int, tableNumber int) error {
+	rounds, err := t.GetRounds()
+	if err != nil {
+		return err
+	}
+
+	// Find the target match and round
+	var match *model.Match
+	var targetRound *model.Round
+	for r := range rounds {
+		if rounds[r].RoundNumber != roundNumber {
+			continue
+		}
+		targetRound = &rounds[r]
+		for m := range rounds[r].Matches {
+			if rounds[r].Matches[m].TableNumber == tableNumber {
+				match = &rounds[r].Matches[m]
+				break
+			}
+		}
+		if match != nil {
+			break
+		}
+	}
+	if match == nil {
+		return fmt.Errorf("match not found for round %d, table %d", roundNumber, tableNumber)
+	}
+
+	// Clear the match result
+	match.Result = ""
+	match.ScoreA = 0.0
+	match.ScoreB = 0.0
+
+	// Check if all matches in this round are now incomplete
+	allComplete := true
+	for _, m := range targetRound.Matches {
+		if m.Result == "" {
+			allComplete = false
+			break
+		}
+	}
+	targetRound.IsComplete = allComplete
+
+	// Persist updated rounds
+	if err := t.SetRounds(rounds); err != nil {
+		return err
+	}
+
+	// Recompute all players from remaining results
+	if err := RecomputePlayersFromRounds(t); err != nil {
+		return err
+	}
+
+	// Recompute standings
+	UpdateStandings(t)
+
+	return nil
+}
+
+// ClearAllResultsInRound clears all results in a specific round
+func ClearAllResultsInRound(t *model.Tournament, roundNumber int) error {
+	rounds, err := t.GetRounds()
+	if err != nil {
+		return err
+	}
+
+	// Find the target round
+	var targetRound *model.Round
+	for r := range rounds {
+		if rounds[r].RoundNumber == roundNumber {
+			targetRound = &rounds[r]
+			break
+		}
+	}
+	if targetRound == nil {
+		return fmt.Errorf("round %d not found", roundNumber)
+	}
+
+	// Clear all match results in this round
+	for m := range targetRound.Matches {
+		targetRound.Matches[m].Result = ""
+		targetRound.Matches[m].ScoreA = 0.0
+		targetRound.Matches[m].ScoreB = 0.0
+	}
+	targetRound.IsComplete = false
+
+	// Persist updated rounds
+	if err := t.SetRounds(rounds); err != nil {
+		return err
+	}
+
+	// Recompute all players from remaining results
+	if err := RecomputePlayersFromRounds(t); err != nil {
+		return err
+	}
+
+	// Recompute standings
+	UpdateStandings(t)
+
+	return nil
+}
+
+// GoBackToPreviousRound allows going back to previous round while keeping all results
+func GoBackToPreviousRound(t *model.Tournament) error {
+	fmt.Printf("DEBUG: GoBackToPreviousRound called - Current round: %d\n", t.CurrentRound)
+	
+	if t.CurrentRound <= 1 {
+		fmt.Printf("DEBUG: Cannot go back - already at round 1 or no rounds exist\n")
+		return fmt.Errorf("cannot go back: already at round 1 or no rounds exist (current round: %d)", t.CurrentRound)
+	}
+
+	rounds, err := t.GetRounds()
+	if err != nil {
+		fmt.Printf("DEBUG: Error getting rounds: %v\n", err)
+		return err
+	}
+	
+	fmt.Printf("DEBUG: Found %d rounds\n", len(rounds))
+
+	// Check if previous round exists
+	previousRoundExists := false
+	for _, r := range rounds {
+		fmt.Printf("DEBUG: Checking round %d\n", r.RoundNumber)
+		if r.RoundNumber == t.CurrentRound-1 {
+			previousRoundExists = true
+			break
+		}
+	}
+
+	if !previousRoundExists {
+		fmt.Printf("DEBUG: Previous round %d not found\n", t.CurrentRound-1)
+		return fmt.Errorf("previous round %d not found", t.CurrentRound-1)
+	}
+
+	fmt.Printf("DEBUG: Going back from round %d to round %d\n", t.CurrentRound, t.CurrentRound-1)
+	
+	// Simply decrement current round - keep all rounds data intact
+	t.CurrentRound--
+
+	// Recompute all players from remaining results to ensure consistency
+	fmt.Printf("DEBUG: Recomputing players from rounds\n")
+	if err := RecomputePlayersFromRounds(t); err != nil {
+		fmt.Printf("DEBUG: Error recomputing players: %v\n", err)
+		return err
+	}
+
+	// Recompute standings
+	fmt.Printf("DEBUG: Updating standings\n")
+	UpdateStandings(t)
+
+	// Add event log
+	events, _ := t.GetEvents()
+	detail := struct {
+		PreviousRound int    `json:"previous_round"`
+		NewRound      int    `json:"new_round"`
+		Reason        string `json:"reason"`
+	}{
+		PreviousRound: t.CurrentRound + 1,
+		NewRound:      t.CurrentRound,
+		Reason:        "Went back to previous round",
+	}
+	detailJSON, _ := json.Marshal(detail)
+	events = append(events, model.Event{
+		EventID:     uuid.New(),
+		Type:        "ROUND_REVERTED",
+		Timestamp:   time.Now(),
+		RoundNumber: t.CurrentRound,
+		TableNumber: 0,
+		Details:     detailJSON,
+	})
+	if err := t.SetEvents(events); err != nil {
+		fmt.Printf("DEBUG: Error setting events: %v\n", err)
+		return err
+	}
+
+	fmt.Printf("DEBUG: GoBackToPreviousRound completed successfully - New current round: %d\n", t.CurrentRound)
+	return nil
 }
 
 // CancelCurrentRound reverts the tournament to the previous round state.

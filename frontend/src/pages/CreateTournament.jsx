@@ -9,22 +9,20 @@ function CreateTournament() {
     title: "",
     description: "",
     rounds_total: 5,
-    pairing_system: "Swiss",
-    bye_score: 1.0,
+    // pairing_system dan bye_score sekarang statik
   });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  // Nilai statik untuk pairing system dan bye score
+  const pairingSystem = "Swiss";
+  const byeScore = 1.0;
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]:
-        name === "rounds_total"
-          ? parseInt(value) || 1
-          : name === "bye_score"
-          ? parseFloat(value) || 0.5
-          : value,
+      [name]: name === "rounds_total" ? parseInt(value) || 1 : value,
     }));
   };
 
@@ -241,62 +239,17 @@ function CreateTournament() {
                 </p>
               </div>
 
-              {/* Pairing System */}
-              <div>
-                <label className="block text-lg font-bold text-black mb-3">
-                  Sistem Pairing
-                </label>
-                <select
-                  name="pairing_system"
-                  value={formData.pairing_system}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-4 border-2 border-black focus:outline-none focus:ring-0 focus:border-gray-600 transition-all duration-300 text-lg"
-                  disabled={isLoading}
-                >
-                  <option value="Swiss">Swiss System</option>
-                  <option value="Round Robin">Round Robin</option>
-                </select>
-                <p className="text-sm text-gray-600 mt-2">
-                  Sistem pairing yang akan digunakan dalam tournament
-                </p>
-              </div>
-
-              {/* Bye Score */}
-              <div>
-                <label className="block text-lg font-bold text-black mb-3">
-                  Skor Bye
-                </label>
-                <input
-                  type="number"
-                  name="bye_score"
-                  value={formData.bye_score}
-                  onChange={handleInputChange}
-                  min="0"
-                  max="1"
-                  step="0.5"
-                  className="w-full px-4 py-4 border-2 border-black focus:outline-none focus:ring-0 focus:border-gray-600 transition-all duration-300 text-lg"
-                  disabled={isLoading}
-                  required
-                />
-                <p className="text-sm text-gray-600 mt-2">
-                  Skor yang diberikan untuk bye (biasanya 0.5 atau 1.0)
-                </p>
-              </div>
-
               {/* Tournament Info */}
               <div className="bg-gray-50 border-2 border-gray-300 p-4">
                 <h3 className="font-bold text-black mb-2">
                   Informasi Tournament:
                 </h3>
                 <ul className="text-sm text-gray-700 space-y-1">
-                  <li>
-                    • Tournament akan menggunakan sistem{" "}
-                    {formData.pairing_system}
-                  </li>
+                  <li>• Tournament akan menggunakan sistem {pairingSystem}</li>
                   <li>• Pemain dapat ditambahkan setelah tournament dibuat</li>
                   <li>• Pairing akan dibuat otomatis setiap ronde</li>
                   <li>• Hasil pertandingan dapat diinput secara real-time</li>
-                  <li>• Skor bye: {formData.bye_score} poin</li>
+                  <li>• Skor bye: {byeScore} poin</li>
                 </ul>
               </div>
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"xchess-desktop/internal/auth"
 	"xchess-desktop/internal/database"
 
@@ -241,11 +242,81 @@ func (a *App) ExportAllRoundsPairingsToPDF() ([]byte, error) {
 	return tournament.ExportAllRoundsPairingsToPDF(a.currentTournament)
 }
 
-// AddPlayer adds a new player to the current tournament.
+// AddPlayer adds a new player to the database and optionally to the current tournament.
 // Returns the player ID if successful.
-func (a *App) AddPlayer(name string, rating int) (string, error) {
-	if a.currentTournament == nil {
-		return "", fmt.Errorf("no active tournament")
+func (a *App) AddPlayer(name string, club string) (string, error) {
+	// Validate required fields
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("player name is required")
 	}
-	return tournament.AddPlayer(a.currentTournament, name, rating)
+
+	// Generate new UUID for the player
+	playerID := uuid.NewString()
+
+	// Create new player
+	newPlayer := model.Player{
+		ID:           playerID,
+		Name:         strings.TrimSpace(name),
+		Score:        0.0,
+		OpponentIDs:  []string{},
+		Buchholz:     0.0,
+		ColorHistory: "",
+		HasBye:       false,
+		Club:         strings.TrimSpace(club),
+	}
+
+	// Save to database
+	if a.db != nil {
+		if err := a.db.Create(&newPlayer).Error; err != nil {
+			return "", fmt.Errorf("failed to save player to database: %v", err)
+		}
+	}
+
+	// If there's an active tournament and it hasn't started, add player to tournament
+	if a.currentTournament != nil && a.currentTournament.CurrentRound == 0 {
+		if _, err := tournament.AddPlayer(a.currentTournament, name, club); err != nil {
+			// Player saved to DB but failed to add to tournament - that's okay
+			log.Printf("Player saved to DB but failed to add to tournament: %v", err)
+		}
+	}
+
+	return playerID, nil
+}
+
+// ClearMatchResult clears the result of a specific match
+func (a *App) ClearMatchResult(roundNumber int, tableNumber int) (bool, error) {
+	if a.currentTournament == nil {
+		return false, nil
+	}
+	if err := tournament.ClearMatchResult(a.currentTournament, roundNumber, tableNumber); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ClearAllResultsInRound clears all results in a specific round
+func (a *App) ClearAllResultsInRound(roundNumber int) (bool, error) {
+	if a.currentTournament == nil {
+		return false, nil
+	}
+	if err := tournament.ClearAllResultsInRound(a.currentTournament, roundNumber); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// GoBackToPreviousRound goes back to the previous round
+func (a *App) GoBackToPreviousRound() (bool, error) {
+	fmt.Printf("DEBUG: GoBackToPreviousRound called in app.go\n")
+	if a.currentTournament == nil {
+		fmt.Printf("DEBUG: No current tournament\n")
+		return false, nil
+	}
+	fmt.Printf("DEBUG: Current tournament exists, calling tournament.GoBackToPreviousRound\n")
+	if err := tournament.GoBackToPreviousRound(a.currentTournament); err != nil {
+		fmt.Printf("DEBUG: Error from tournament.GoBackToPreviousRound: %v\n", err)
+		return false, err
+	}
+	fmt.Printf("DEBUG: GoBackToPreviousRound completed successfully\n")
+	return true, nil
 }
