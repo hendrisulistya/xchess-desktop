@@ -69,3 +69,11 @@ export function NextRound() {
 export function RecordResult(arg1, arg2) {
   return window['go']['main']['App']['RecordResult'](arg1, arg2);
 }
+
+export function SaveAllRoundsPairingsToPDF() {
+  return window['go']['main']['App']['SaveAllRoundsPairingsToPDF']();
+}
+
+export function SaveRoundPairingsToPDF(arg1) {
+  return window['go']['main']['App']['SaveRoundPairingsToPDF'](arg1);
+}

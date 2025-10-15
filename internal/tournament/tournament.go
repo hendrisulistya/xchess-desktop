@@ -700,6 +700,16 @@ func AdvanceToNextRound(t *model.Tournament, engine PairingEngine) error {
 		return err
 	}
 
+	// Remove any existing rounds after the current round to ensure fresh pairing
+	// This handles the case where user went back to previous round and wants to regenerate
+	filteredRounds := make([]model.Round, 0, len(rounds))
+	for _, r := range rounds {
+		if r.RoundNumber <= t.CurrentRound {
+			filteredRounds = append(filteredRounds, r)
+		}
+	}
+	rounds = filteredRounds
+
 	newRound := model.Round{
 		RoundNumber: nextRoundNumber,
 		Matches:     matches,

@@ -35,3 +35,7 @@ export function ListPlayers():Promise<Array<model.Player>>;
 export function NextRound():Promise<boolean>;
 
 export function RecordResult(arg1:number,arg2:string):Promise<boolean>;
+
+export function SaveAllRoundsPairingsToPDF():Promise<string>;
+
+export function SaveRoundPairingsToPDF(arg1:number):Promise<string>;

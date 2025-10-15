@@ -8,6 +8,8 @@ import {
   GetTournamentInfo,
   ExportRoundPairingsToPDF,
   ExportAllRoundsPairingsToPDF,
+  SaveRoundPairingsToPDF,
+  SaveAllRoundsPairingsToPDF,
   GoBackToPreviousRound,
 } from "../../wailsjs/go/main/App";
 import Navbar from "../components/Navbar";
@@ -166,80 +168,49 @@ function Pairing() {
         return;
       }
 
-      setStatus("Mengekspor ronde ke PDF...");
+      setStatus("Menyimpan ronde ke PDF...");
+      console.log("Starting PDF save for round:", currentRound.round_number);
 
       try {
-        const pdfBytes = await ExportRoundPairingsToPDF(
+        // Use the new save function that saves directly to Desktop
+        const filePath = await SaveRoundPairingsToPDF(
           currentRound.round_number
         );
 
-        // Check if we got valid PDF data
-        if (!pdfBytes || pdfBytes.length === 0) {
-          setStatus("Gagal mengekspor ronde ke PDF - tidak ada data");
-          return;
-        }
-
-        // Create blob and download
-        const blob = new Blob([new Uint8Array(pdfBytes)], {
-          type: "application/pdf",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `Ronde_${currentRound.round_number}_${
-          tournamentInfo?.title || "Tournament"
-        }.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        setStatus("Ronde berhasil diekspor ke PDF");
+        console.log("PDF saved to:", filePath);
+        setStatus(
+          `PDF berhasil disimpan ke Desktop: ${filePath.split("/").pop()}`
+        );
       } catch (backendError) {
         console.error("Backend error:", backendError);
-        setStatus(`Error saat mengekspor: ${backendError.toString()}`);
+        setStatus(`Error saat menyimpan PDF: ${backendError.toString()}`);
       }
     } catch (error) {
-      console.error("Error exporting round to PDF:", error);
-      setStatus("Error saat mengekspor ronde ke PDF");
+      console.error("Error saving round to PDF:", error);
+      setStatus("Error saat menyimpan ronde ke PDF");
     }
   };
 
   const exportAllRoundsToPDF = async () => {
     try {
-      setStatus("Mengekspor semua ronde ke PDF...");
+      setStatus("Menyimpan semua ronde ke PDF...");
+      console.log("Starting PDF save for all rounds");
 
       try {
-        const pdfBytes = await ExportAllRoundsPairingsToPDF();
+        // Use the new save function that saves directly to Desktop
+        const filePath = await SaveAllRoundsPairingsToPDF();
 
-        // Check if we got valid PDF data
-        if (!pdfBytes || pdfBytes.length === 0) {
-          setStatus("Gagal mengekspor semua ronde ke PDF - tidak ada data");
-          return;
-        }
-
-        // Create blob and download
-        const blob = new Blob([new Uint8Array(pdfBytes)], {
-          type: "application/pdf",
-        });
-        const url = URL.createObjectURL(blob);
-        link.href = url;
-        link.download = `Semua_Ronde_${
-          tournamentInfo?.title || "Tournament"
-        }.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        setStatus("Semua ronde berhasil diekspor ke PDF");
+        console.log("PDF saved to:", filePath);
+        setStatus(
+          `PDF berhasil disimpan ke Desktop: ${filePath.split("/").pop()}`
+        );
       } catch (backendError) {
         console.error("Backend error:", backendError);
-        setStatus(`Error saat mengekspor: ${backendError.toString()}`);
+        setStatus(`Error saat menyimpan PDF: ${backendError.toString()}`);
       }
     } catch (error) {
-      console.error("Error exporting all rounds to PDF:", error);
-      setStatus("Error saat mengekspor semua ronde ke PDF");
+      console.error("Error saving all rounds to PDF:", error);
+      setStatus("Error saat menyimpan semua ronde ke PDF");
     }
   };
 

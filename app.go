@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"xchess-desktop/internal/auth"
 	"xchess-desktop/internal/database"
@@ -233,6 +235,41 @@ func (a *App) ExportRoundPairingsToPDF(roundNumber int) ([]byte, error) {
 	return tournament.ExportRoundPairingsToPDF(a.currentTournament, roundNumber)
 }
 
+// SaveRoundPairingsToPDF exports round pairings to PDF and saves to Desktop.
+// Returns the file path where the PDF was saved.
+func (a *App) SaveRoundPairingsToPDF(roundNumber int) (string, error) {
+	if a.currentTournament == nil {
+		return "", fmt.Errorf("no active tournament")
+	}
+	
+	// Generate PDF bytes
+	pdfBytes, err := tournament.ExportRoundPairingsToPDF(a.currentTournament, roundNumber)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate PDF: %w", err)
+	}
+	
+	// Get user's Desktop directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	
+	desktopDir := filepath.Join(homeDir, "Desktop")
+	
+	// Create filename
+	fileName := fmt.Sprintf("Ronde_%d_%s.pdf", roundNumber, 
+		strings.ReplaceAll(a.currentTournament.Title, " ", "_"))
+	filePath := filepath.Join(desktopDir, fileName)
+	
+	// Write file to Desktop
+	err = os.WriteFile(filePath, pdfBytes, 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save PDF file: %w", err)
+	}
+	
+	return filePath, nil
+}
+
 // ExportAllRoundsPairingsToPDF exports all rounds pairings to a single PDF.
 // Returns the PDF data as bytes.
 func (a *App) ExportAllRoundsPairingsToPDF() ([]byte, error) {
@@ -240,6 +277,41 @@ func (a *App) ExportAllRoundsPairingsToPDF() ([]byte, error) {
 		return nil, nil
 	}
 	return tournament.ExportAllRoundsPairingsToPDF(a.currentTournament)
+}
+
+// SaveAllRoundsPairingsToPDF exports all rounds pairings to PDF and saves to Desktop.
+// Returns the file path where the PDF was saved.
+func (a *App) SaveAllRoundsPairingsToPDF() (string, error) {
+	if a.currentTournament == nil {
+		return "", fmt.Errorf("no active tournament")
+	}
+	
+	// Generate PDF bytes
+	pdfBytes, err := tournament.ExportAllRoundsPairingsToPDF(a.currentTournament)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate PDF: %w", err)
+	}
+	
+	// Get user's Desktop directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	
+	desktopDir := filepath.Join(homeDir, "Desktop")
+	
+	// Create filename
+	fileName := fmt.Sprintf("Semua_Ronde_%s.pdf", 
+		strings.ReplaceAll(a.currentTournament.Title, " ", "_"))
+	filePath := filepath.Join(desktopDir, fileName)
+	
+	// Write file to Desktop
+	err = os.WriteFile(filePath, pdfBytes, 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save PDF file: %w", err)
+	}
+	
+	return filePath, nil
 }
 
 // AddPlayer adds a new player to the database and optionally to the current tournament.
