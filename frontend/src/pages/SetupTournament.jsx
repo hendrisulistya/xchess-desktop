@@ -42,8 +42,11 @@ function SetupTournament() {
 
   const loadPlayers = async () => {
     try {
+      console.log("Loading players from database...");
       const playerList = await ListPlayers();
+      console.log("ListPlayers result:", playerList);
       setPlayers(playerList || []);
+      console.log("Players state updated, count:", (playerList || []).length);
     } catch (error) {
       console.error("Error loading players:", error);
       setStatus("Error loading players");
@@ -63,10 +66,17 @@ function SetupTournament() {
       setIsAddingPlayer(true);
       setStatus("Menambahkan pemain baru...");
 
+      console.log("Adding player:", {
+        name: newPlayer.name.trim(),
+        club: newPlayer.club.trim(),
+      });
+
       const playerID = await AddPlayer(
         newPlayer.name.trim(),
         newPlayer.club.trim()
       );
+
+      console.log("AddPlayer result:", playerID);
 
       if (playerID) {
         setStatus(`Pemain ${newPlayer.name} berhasil ditambahkan`);
@@ -76,11 +86,14 @@ function SetupTournament() {
         setShowAddPlayerForm(false);
 
         // Reload players list
+        console.log("Reloading players list...");
         await loadPlayers();
+        console.log("Players list reloaded, current count:", players.length);
 
         // Clear status after 3 seconds
         setTimeout(() => setStatus(""), 3000);
       } else {
+        console.error("AddPlayer returned empty/null playerID");
         setStatus("Gagal menambahkan pemain");
       }
     } catch (error) {

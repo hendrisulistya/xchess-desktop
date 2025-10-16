@@ -322,6 +322,8 @@ func (a *App) AddPlayer(name string, club string) (string, error) {
 		return "", fmt.Errorf("player name is required")
 	}
 
+	log.Printf("AddPlayer called: name='%s', club='%s'", name, club)
+
 	// Generate new UUID for the player
 	playerID := uuid.NewString()
 
@@ -340,16 +342,29 @@ func (a *App) AddPlayer(name string, club string) (string, error) {
 	// Save to database
 	if a.db != nil {
 		if err := a.db.Create(&newPlayer).Error; err != nil {
+			log.Printf("Failed to save player to database: %v", err)
 			return "", fmt.Errorf("failed to save player to database: %v", err)
 		}
+		log.Printf("Player saved to database successfully: ID=%s", playerID)
+	} else {
+		log.Printf("Warning: Database is nil, player not saved to database")
 	}
 
 	// If there's an active tournament and it hasn't started, add player to tournament
-	if a.currentTournament != nil && a.currentTournament.CurrentRound == 0 {
-		if _, err := tournament.AddPlayer(a.currentTournament, name, club); err != nil {
-			// Player saved to DB but failed to add to tournament - that's okay
-			log.Printf("Player saved to DB but failed to add to tournament: %v", err)
+	if a.currentTournament != nil {
+		log.Printf("Current tournament exists, CurrentRound=%d", a.currentTournament.CurrentRound)
+		if a.currentTournament.CurrentRound == 0 {
+			if _, err := tournament.AddPlayer(a.currentTournament, name, club); err != nil {
+				// Player saved to DB but failed to add to tournament - that's okay
+				log.Printf("Player saved to DB but failed to add to tournament: %v", err)
+			} else {
+				log.Printf("Player added to tournament successfully")
+			}
+		} else {
+			log.Printf("Tournament has already started (round %d), player not added to tournament", a.currentTournament.CurrentRound)
 		}
+	} else {
+		log.Printf("No active tournament, player only saved to database")
 	}
 
 	return playerID, nil

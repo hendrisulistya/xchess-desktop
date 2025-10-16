@@ -112,9 +112,6 @@ function Klasemen() {
                         Poin
                       </th>
                       <th className="px-4 py-3 text-center font-medium">
-                        Dari Round
-                      </th>
-                      <th className="px-4 py-3 text-center font-medium">
                         Buchholz
                       </th>
                       <th className="px-4 py-3 text-center font-medium">
@@ -134,13 +131,6 @@ function Klasemen() {
                         <td className="px-4 py-4 font-medium">{player.name}</td>
                         <td className="px-4 py-4 text-center font-bold text-lg">
                           {player.score}
-                        </td>
-                        <td className="px-4 py-4 text-center text-sm text-gray-600">
-                          {tournamentInfo
-                            ? `${tournamentInfo.current_round} round${
-                                tournamentInfo.current_round > 1 ? "s" : ""
-                              }`
-                            : "N/A"}
                         </td>
                         <td className="px-4 py-4 text-center">
                           {player.buchholz.toFixed(1)}
