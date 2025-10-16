@@ -88,13 +88,15 @@ func (a *App) InitTournament(title string, description string, playerNames []str
 	players := make([]model.Player, 0, len(playerNames))
 	for _, name := range playerNames {
 		players = append(players, model.Player{
-			ID:           uuid.NewString(),
-			Name:         name,
-			Score:        0,
-			OpponentIDs:  []string{},
-			Buchholz:     0,
-			ColorHistory: "",
-			HasBye:       false,
+			ID:               uuid.NewString(),
+			Name:             name,
+			Score:            0,
+			OpponentIDs:      []string{},
+			Buchholz:         0,
+			ProgressiveScore: 0,
+			HeadToHeadResults: make(model.HeadToHeadMap),
+			ColorHistory:     "",
+			HasBye:           false,
 		})
 	}
 

@@ -1,7 +1,9 @@
 package model
 
 import (
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,14 +33,47 @@ type Administrator struct {
 
 // Player represents a single participant in the tournament.
 type Player struct {
-	ID           string   `json:"id" gorm:"primaryKey"` // Unique short ID or player handle
-	Name         string   `json:"name"`
-	Score        float64  `json:"score"`                         // Current total points (e.g., 1.0 for Win, 0.5 for Draw)
-	OpponentIDs  []string `json:"opponent_ids" gorm:"type:json"` // List of IDs of players already faced (Crucial for Swiss Pairing)
-	Buchholz     float64  `json:"buchholz"`                      // Primary Tie-breaker: Sum of opponents' scores
-	ColorHistory string   `json:"color_history"`                 // E.g., "WBW" (White, Black, White) to track color imbalance
-	HasBye       bool     `json:"has_bye"`                       // True if the player has received a bye
-	Club         string   `json:"club,omitempty"`                // Player's chess club (optional)
+	ID               string             `json:"id" gorm:"primaryKey"` // Unique short ID or player handle
+	Name             string             `json:"name"`
+	Score            float64            `json:"score"`                           // Current total points (e.g., 1.0 for Win, 0.5 for Draw)
+	OpponentIDs      []string           `json:"opponent_ids" gorm:"type:json"`   // List of IDs of players already faced (Crucial for Swiss Pairing)
+	Buchholz         float64            `json:"buchholz"`                        // Tie-breaker: Sum of opponents' scores
+	ProgressiveScore float64            `json:"progressive_score"`               // Tie-breaker: Cumulative score after each round
+	HeadToHeadResults HeadToHeadMap      `json:"head_to_head_results" gorm:"type:json"` // Tie-breaker: Results vs specific opponents (opponent_id -> score)
+	ColorHistory     string             `json:"color_history"`                   // E.g., "WBW" (White, Black, White) to track color imbalance
+	HasBye           bool               `json:"has_bye"`                         // True if the player has received a bye
+	Club             string             `json:"club,omitempty"`                  // Player's chess club (optional)
+}
+
+// HeadToHeadMap is a custom type for GORM serialization
+type HeadToHeadMap map[string]float64
+
+// Value implements the driver.Valuer interface for GORM
+func (h HeadToHeadMap) Value() (driver.Value, error) {
+	if h == nil {
+		return "null", nil
+	}
+	return json.Marshal(h)
+}
+
+// Scan implements the sql.Scanner interface for GORM
+func (h *HeadToHeadMap) Scan(value interface{}) error {
+	if value == nil {
+		*h = make(map[string]float64)
+		return nil
+	}
+	
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return fmt.Errorf("cannot scan %T into HeadToHeadMap", value)
+	}
+	
+	return json.Unmarshal(bytes, h)
 }
 
 // Match represents the outcome of a single game between two players.

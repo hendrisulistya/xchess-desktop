@@ -499,9 +499,14 @@ func ensureOpponent(p *model.Player, oid string) {
 	p.OpponentIDs = append(p.OpponentIDs, oid)
 }
 
-// UpdateStandings recomputes Buchholz for all players based on OpponentIDs and current scores.
+// UpdateStandings recomputes Buchholz, Progressive Score, and Head-to-Head for all players.
 func UpdateStandings(t *model.Tournament) error {
 	players, err := t.GetPlayers()
+	if err != nil {
+		return err
+	}
+	
+	rounds, err := t.GetRounds()
 	if err != nil {
 		return err
 	}
@@ -510,6 +515,76 @@ func UpdateStandings(t *model.Tournament) error {
 	scoreIndex := make(map[string]float64, len(players))
 	for _, p := range players {
 		scoreIndex[p.ID] = p.Score
+	}
+
+	// Initialize Head-to-Head results for all players
+	for i := range players {
+		p := &players[i]
+		if p.HeadToHeadResults == nil {
+			p.HeadToHeadResults = make(model.HeadToHeadMap)
+		}
+	}
+
+	// Index players by ID for fast updates
+	playerIndex := make(map[string]*model.Player)
+	for i := range players {
+		p := &players[i]
+		// Reset Progressive Score and Head-to-Head
+		p.ProgressiveScore = 0
+		p.HeadToHeadResults = make(model.HeadToHeadMap)
+		playerIndex[p.ID] = p
+	}
+
+	// Calculate Progressive Score and Head-to-Head from all completed rounds
+	for roundNum := 1; roundNum <= t.CurrentRound; roundNum++ {
+		// Find the round
+		var currentRound *model.Round
+		for _, r := range rounds {
+			if r.RoundNumber == roundNum {
+				currentRound = &r
+				break
+			}
+		}
+		if currentRound == nil {
+			continue
+		}
+
+		// Process matches in this round
+		for _, m := range currentRound.Matches {
+			if m.Result == "" || m.PlayerB_ID == ByePlayerID {
+				continue
+			}
+
+			// Update Head-to-Head results
+			if playerA, ok := playerIndex[m.PlayerA_ID]; ok {
+				playerA.HeadToHeadResults[m.PlayerB_ID] = m.ScoreA
+			}
+			if playerB, ok := playerIndex[m.PlayerB_ID]; ok {
+				playerB.HeadToHeadResults[m.PlayerA_ID] = m.ScoreB
+			}
+		}
+
+		// Update Progressive Score after this round
+		for i := range players {
+			p := &players[i]
+			if player, ok := playerIndex[p.ID]; ok {
+				// Add current round score to progressive total
+				roundScore := 0.0
+				for _, m := range currentRound.Matches {
+					if m.Result == "" {
+						continue
+					}
+					if m.PlayerA_ID == p.ID {
+						roundScore = m.ScoreA
+						break
+					} else if m.PlayerB_ID == p.ID {
+						roundScore = m.ScoreB
+						break
+					}
+				}
+				player.ProgressiveScore += roundScore
+			}
+		}
 	}
 
 	for i := range players {
@@ -527,8 +602,8 @@ func UpdateStandings(t *model.Tournament) error {
 	return t.SetPlayers(players)
 }
 
-// GetStandings returns the players sorted by Score desc, Buchholz desc, Name asc.
-// It recomputes Buchholz before sorting to ensure tie-breaks are up-to-date.
+// GetStandings returns the players sorted by: Score desc, Head-to-Head, Buchholz desc, Progressive Score desc, Name asc.
+// It recomputes all tie-breakers before sorting to ensure they are up-to-date.
 func GetStandings(t *model.Tournament) ([]model.Player, error) {
 	if err := UpdateStandings(t); err != nil {
 		return nil, err
@@ -538,12 +613,32 @@ func GetStandings(t *model.Tournament) ([]model.Player, error) {
 		return nil, err
 	}
 	sort.SliceStable(players, func(i, j int) bool {
+		// 1. Total Points (Score) - highest first
 		if players[i].Score != players[j].Score {
 			return players[i].Score > players[j].Score
 		}
+		
+		// 2. Head-to-Head - check if they played against each other
+		if h2hResult, exists := players[i].HeadToHeadResults[players[j].ID]; exists {
+			if h2hOpponentResult, opponentExists := players[j].HeadToHeadResults[players[i].ID]; opponentExists {
+				// If they played each other, use head-to-head result
+				if h2hResult != h2hOpponentResult {
+					return h2hResult > h2hOpponentResult
+				}
+			}
+		}
+		
+		// 3. Buchholz - highest first
 		if players[i].Buchholz != players[j].Buchholz {
 			return players[i].Buchholz > players[j].Buchholz
 		}
+		
+		// 4. Progressive Score - highest first
+		if players[i].ProgressiveScore != players[j].ProgressiveScore {
+			return players[i].ProgressiveScore > players[j].ProgressiveScore
+		}
+		
+		// 5. Name - alphabetical order
 		return players[i].Name < players[j].Name
 	})
 	return players, nil
@@ -796,6 +891,16 @@ func RecomputePlayersFromRounds(t *model.Tournament) error {
 		p.ColorHistory = ""
 		p.HasBye = false
 		p.OpponentIDs = []string{}
+		p.Buchholz = 0
+		p.ProgressiveScore = 0
+		if p.HeadToHeadResults == nil {
+			p.HeadToHeadResults = make(model.HeadToHeadMap)
+		} else {
+			// Clear existing head-to-head results
+			for k := range p.HeadToHeadResults {
+				delete(p.HeadToHeadResults, k)
+			}
+		}
 		index[p.ID] = p
 	}
 

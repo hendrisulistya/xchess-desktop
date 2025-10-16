@@ -115,6 +115,9 @@ function Klasemen() {
                         Buchholz
                       </th>
                       <th className="px-4 py-3 text-center font-medium">
+                        Progressive Score
+                      </th>
+                      <th className="px-4 py-3 text-center font-medium">
                         Club / Domisili
                       </th>
                     </tr>
@@ -134,6 +137,11 @@ function Klasemen() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           {player.buchholz.toFixed(1)}
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          {player.progressive_score
+                            ? player.progressive_score.toFixed(1)
+                            : "0.0"}
                         </td>
                         <td className="px-4 py-4 text-center">{player.club}</td>
                         <td className="px-4 py-4 text-center">

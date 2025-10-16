@@ -381,15 +381,26 @@ function Pairing() {
                                 ) : (
                                   <>
                                     <button
-                                      onClick={() =>
+                                      onClick={() => {
+                                        // Tentukan hasil berdasarkan warna, bukan PlayerA/PlayerB
+                                        const whiteWinResult =
+                                          match.white_id === match.player_a_id
+                                            ? "A_WIN"
+                                            : "B_WIN";
                                         recordResult(
                                           match.table_number,
-                                          "A_WIN"
-                                        )
-                                      }
+                                          whiteWinResult
+                                        );
+                                      }}
                                       className={getResultButtonStyle(
-                                        "A_WIN",
-                                        match.result === "A_WIN"
+                                        match.white_id === match.player_a_id
+                                          ? "A_WIN"
+                                          : "B_WIN",
+                                        (match.white_id === match.player_a_id &&
+                                          match.result === "A_WIN") ||
+                                          (match.white_id ===
+                                            match.player_b_id &&
+                                            match.result === "B_WIN")
                                       )}
                                     >
                                       1-0
@@ -406,15 +417,26 @@ function Pairing() {
                                       ½-½
                                     </button>
                                     <button
-                                      onClick={() =>
+                                      onClick={() => {
+                                        // Tentukan hasil berdasarkan warna, bukan PlayerA/PlayerB
+                                        const blackWinResult =
+                                          match.black_id === match.player_a_id
+                                            ? "A_WIN"
+                                            : "B_WIN";
                                         recordResult(
                                           match.table_number,
-                                          "B_WIN"
-                                        )
-                                      }
+                                          blackWinResult
+                                        );
+                                      }}
                                       className={getResultButtonStyle(
-                                        "B_WIN",
-                                        match.result === "B_WIN"
+                                        match.black_id === match.player_a_id
+                                          ? "A_WIN"
+                                          : "B_WIN",
+                                        (match.black_id === match.player_a_id &&
+                                          match.result === "A_WIN") ||
+                                          (match.black_id ===
+                                            match.player_b_id &&
+                                            match.result === "B_WIN")
                                       )}
                                     >
                                       0-1

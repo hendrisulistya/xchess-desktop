@@ -36,6 +36,8 @@ export namespace model {
 	    score: number;
 	    opponent_ids: string[];
 	    buchholz: number;
+	    progressive_score: number;
+	    head_to_head_results: Record<string, number>;
 	    color_history: string;
 	    has_bye: boolean;
 	    club?: string;
@@ -51,6 +53,8 @@ export namespace model {
 	        this.score = source["score"];
 	        this.opponent_ids = source["opponent_ids"];
 	        this.buchholz = source["buchholz"];
+	        this.progressive_score = source["progressive_score"];
+	        this.head_to_head_results = source["head_to_head_results"];
 	        this.color_history = source["color_history"];
 	        this.has_bye = source["has_bye"];
 	        this.club = source["club"];

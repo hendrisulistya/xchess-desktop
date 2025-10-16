@@ -189,7 +189,7 @@ function Tournament() {
       <ol>
         {standings.map((p) => (
           <li key={p.id}>
-            {p.name} — {p.score} pts (Buchholz: {p.buchholz})
+            {p.name} — {p.score} pts (Buchholz: {p.buchholz}, PS: {p.progressive_score ? p.progressive_score.toFixed(1) : '0.0'})
           </li>
         ))}
       </ol>
