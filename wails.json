@@ -1,13 +1,20 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "xchess-desktop",
-  "outputfilename": "xchess-desktop",
+  "outputfilename": "XCHESS",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Hendri Sulistya",
-    "email": "id.hendrisulistya@gmail.com"
+    "name": "KEWR DIGITAL",
+    "email": "kewr.digital@gmail.com"
+  },
+  "info": {
+    "productName": "XCHESS",
+    "productVersion": "1.0.0",
+    "companyName": "KEWR DIGITAL",
+    "copyright": "© 2025 Kewr Digital. All rights reserved.",
+    "comments": "Professional Chess Tournament Management System"
   }
 }

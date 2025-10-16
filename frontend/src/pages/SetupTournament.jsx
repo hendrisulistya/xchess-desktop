@@ -92,7 +92,7 @@ function SetupTournament() {
   };
 
   const handleCancelAddPlayer = () => {
-    setNewPlayer({ name: "", rating: 1200 });
+    setNewPlayer({ name: "", club: "" });
     setShowAddPlayerForm(false);
     setStatus("");
   };
