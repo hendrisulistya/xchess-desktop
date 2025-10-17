@@ -1417,7 +1417,7 @@ func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, err
 				col.New(3).Add(
 					text.New(whitePlayer, props.Text{
 						Top:   1,
-						Align: align.Left,
+						Align: align.Center,
 						Size:  9,
 					}),
 				),
@@ -1431,7 +1431,7 @@ func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, err
 				col.New(3).Add(
 					text.New(blackPlayer, props.Text{
 						Top:   1,
-						Align: align.Left,
+						Align: align.Center,
 						Size:  9,
 					}),
 				),
