@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
@@ -1268,37 +1269,52 @@ func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, err
 	// Create maroto instance
 	m := maroto.New(cfg)
 
-	// Add title
+	// Add logo centered at top (larger size)
 	m.AddRows(
-		row.New(20).Add(
+		row.New(25).Add(
 			col.New(12).Add(
-				text.New(fmt.Sprintf("Tournament: %s", t.Title), props.Text{
-					Top:   3,
+				image.NewFromFile("build/xchess.png", props.Rect{
+					Top:     2,
+					Center:  true,
+					Percent: 75,
+				}),
+			),
+		),
+	)
+
+	// Add tournament title (reduced spacing)
+	m.AddRows(
+		row.New(8).Add(
+			col.New(12).Add(
+				text.New(t.Title, props.Text{
+					Top:   2,
 					Style: fontstyle.Bold,
 					Align: align.Center,
-					Size:  16,
+					Size:  18,
 				}),
 			),
 		),
 	)
 
-	// Add tournament ID
-	m.AddRows(
-		row.New(10).Add(
-			col.New(12).Add(
-				text.New(fmt.Sprintf("Tournament ID: %s", t.ID.String()), props.Text{
-					Top:   2,
-					Align: align.Center,
-					Size:  10,
-				}),
+	// Add tournament description (if exists)
+	if t.Description != "" {
+		m.AddRows(
+			row.New(6).Add(
+				col.New(12).Add(
+					text.New(t.Description, props.Text{
+						Top:   3,
+						Align: align.Center,
+						Size:  12,
+					}),
+				),
 			),
-		),
-	)
+		)
+	}
 
-	// Add round number
+	// Add round number (aligned with table)
 	m.AddRows(
 		row.New(15).Add(
-			col.New(12).Add(
+			col.New(2).Add(
 				text.New(fmt.Sprintf("Round %d", roundNumber), props.Text{
 					Top:   3,
 					Style: fontstyle.Bold,
@@ -1306,6 +1322,7 @@ func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, err
 					Size:  14,
 				}),
 			),
+			col.New(10), // Empty space to match table layout
 		),
 	)
 
@@ -1429,12 +1446,24 @@ func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, err
 		)
 	}
 
-	// Add footer with generation timestamp
+	// Add footer with timestamp and maintenance info
 	m.AddRows(
-		row.New(15).Add(
+		row.New(10).Add(
 			col.New(12).Add(
-				text.New(fmt.Sprintf("Generated on: %s", time.Now().Format("2006-01-02 15:04:05")), props.Text{
-					Top:   5,
+				text.New(time.Now().Format("2006-01-02 15:04:05"), props.Text{
+					Top:   3,
+					Align: align.Center,
+					Size:  8,
+				}),
+			),
+		),
+	)
+	
+	m.AddRows(
+		row.New(8).Add(
+			col.New(12).Add(
+				text.New("maintenance by kewr digital", props.Text{
+					Top:   1,
 					Align: align.Center,
 					Size:  8,
 				}),
