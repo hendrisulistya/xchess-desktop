@@ -42,16 +42,29 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		log.Printf("failed to get DB path: %v", err)
 	} else {
+		log.Printf("Database path: %s", dbPath)
 		a.db, err = database.New(dbPath)
 		if err != nil {
 			log.Printf("failed to open DB: %v", err)
 		} else {
+			log.Println("Running database migrations...")
 			if err = a.db.RunMigrations(); err != nil {
 				log.Printf("failed to run migrations: %v", err)
+			} else {
+				log.Println("Database migrations completed successfully")
 			}
 			a.authSvc, err = auth.New(a.db)
 			if err != nil {
 				log.Printf("failed to init auth service: %v", err)
+			}
+			
+			// Verify database connection and initial data
+			log.Println("Verifying database connection and initial data...")
+			var playerCount int64
+			if err := a.db.Model(&model.Player{}).Count(&playerCount).Error; err != nil {
+				log.Printf("Warning: Could not count players after startup: %v", err)
+			} else {
+				log.Printf("Database startup verification: %d players found", playerCount)
 			}
 		}
 	}
@@ -316,6 +329,50 @@ func (a *App) SaveAllRoundsPairingsToPDF() (string, error) {
 	return filePath, nil
 }
 
+// ExportStandingsToPDF exports the tournament standings to PDF.
+// Returns the PDF data as bytes.
+func (a *App) ExportStandingsToPDF() ([]byte, error) {
+	if a.currentTournament == nil {
+		return nil, nil
+	}
+	return tournament.ExportStandingsToPDF(a.currentTournament)
+}
+
+// SaveStandingsToPDF exports tournament standings to PDF and saves to Desktop.
+// Returns the file path where the PDF was saved.
+func (a *App) SaveStandingsToPDF() (string, error) {
+	if a.currentTournament == nil {
+		return "", fmt.Errorf("no active tournament")
+	}
+	
+	// Generate PDF bytes
+	pdfBytes, err := tournament.ExportStandingsToPDF(a.currentTournament)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate PDF: %w", err)
+	}
+	
+	// Get user's Desktop directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	
+	desktopDir := filepath.Join(homeDir, "Desktop")
+	
+	// Create filename
+	fileName := fmt.Sprintf("Klasemen_%s.pdf", 
+		strings.ReplaceAll(a.currentTournament.Title, " ", "_"))
+	filePath := filepath.Join(desktopDir, fileName)
+	
+	// Write file to Desktop
+	err = os.WriteFile(filePath, pdfBytes, 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save PDF file: %w", err)
+	}
+	
+	return filePath, nil
+}
+
 // AddPlayer adds a new player to the database and optionally to the current tournament.
 // Returns the player ID if successful.
 func (a *App) AddPlayer(name string, club string) (string, error) {
@@ -341,12 +398,32 @@ func (a *App) AddPlayer(name string, club string) (string, error) {
 		Club:         strings.TrimSpace(club),
 	}
 
-	// Save to database
+	// Save to database with transaction for better reliability
 	if a.db != nil {
-		if err := a.db.Create(&newPlayer).Error; err != nil {
+		// Use transaction to ensure atomicity
+		tx := a.db.Begin()
+		if tx.Error != nil {
+			log.Printf("Failed to begin transaction: %v", tx.Error)
+			return "", fmt.Errorf("failed to begin transaction: %v", tx.Error)
+		}
+
+		if err := tx.Create(&newPlayer).Error; err != nil {
+			tx.Rollback()
 			log.Printf("Failed to save player to database: %v", err)
 			return "", fmt.Errorf("failed to save player to database: %v", err)
 		}
+
+		// Force commit and sync to disk (important for Windows)
+		if err := tx.Commit().Error; err != nil {
+			log.Printf("Failed to commit transaction: %v", err)
+			return "", fmt.Errorf("failed to commit transaction: %v", err)
+		}
+
+		// Additional sync for Windows - force write to disk
+		if err := a.db.Exec("PRAGMA synchronous = FULL").Error; err != nil {
+			log.Printf("Warning: Failed to set synchronous mode: %v", err)
+		}
+
 		log.Printf("Player saved to database successfully: ID=%s", playerID)
 	} else {
 		log.Printf("Warning: Database is nil, player not saved to database")

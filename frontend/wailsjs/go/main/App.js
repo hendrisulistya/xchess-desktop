@@ -30,6 +30,10 @@ export function ExportRoundPairingsToPDF(arg1) {
   return window['go']['main']['App']['ExportRoundPairingsToPDF'](arg1);
 }
 
+export function ExportStandingsToPDF() {
+  return window['go']['main']['App']['ExportStandingsToPDF']();
+}
+
 export function GetCurrentRound() {
   return window['go']['main']['App']['GetCurrentRound']();
 }
@@ -76,4 +80,8 @@ export function SaveAllRoundsPairingsToPDF() {
 
 export function SaveRoundPairingsToPDF(arg1) {
   return window['go']['main']['App']['SaveRoundPairingsToPDF'](arg1);
+}
+
+export function SaveStandingsToPDF() {
+  return window['go']['main']['App']['SaveStandingsToPDF']();
 }

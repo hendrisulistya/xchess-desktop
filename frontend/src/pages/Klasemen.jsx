@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { GetPlayers, GetTournamentInfo } from "../../wailsjs/go/main/App";
+import {
+  GetPlayers,
+  GetTournamentInfo,
+  SaveStandingsToPDF,
+} from "../../wailsjs/go/main/App";
 import Navbar from "../components/Navbar";
 
 function Klasemen() {
@@ -50,6 +54,34 @@ function Klasemen() {
     }
   };
 
+  const exportStandingsToPDF = async () => {
+    try {
+      if (standings.length === 0) {
+        setStatus("Tidak ada data klasemen untuk diekspor");
+        return;
+      }
+
+      setStatus("Menyimpan klasemen ke PDF...");
+      console.log("Starting PDF save for standings");
+
+      try {
+        // Use the save function that saves directly to Desktop
+        const filePath = await SaveStandingsToPDF();
+
+        console.log("PDF saved to:", filePath);
+        setStatus(
+          `PDF berhasil disimpan ke Desktop: ${filePath.split("/").pop()}`
+        );
+      } catch (backendError) {
+        console.error("Backend error:", backendError);
+        setStatus(`Error saat menyimpan PDF: ${backendError.toString()}`);
+      }
+    } catch (error) {
+      console.error("Error saving standings to PDF:", error);
+      setStatus("Error saat menyimpan klasemen ke PDF");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white text-black flex flex-col relative">
       <div className="absolute inset-0 opacity-5">
@@ -82,11 +114,19 @@ function Klasemen() {
       {/* Main Content */}
       <main className="flex-1 relative z-10 p-6">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold mb-4">Klasemen Turnamen</h2>
-            <p className="text-gray-600">
-              Peringkat pemain berdasarkan skor dan tiebreak
-            </p>
+          <div className="flex justify-between items-center mb-8">
+            <div className="text-center flex-1">
+              <h2 className="text-3xl font-bold mb-4">Klasemen Turnamen</h2>
+              <p className="text-gray-600">
+                Peringkat pemain berdasarkan skor dan tiebreak
+              </p>
+            </div>
+            <button
+              onClick={exportStandingsToPDF}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Export PDF
+            </button>
           </div>
 
           {standings.length === 0 ? (

@@ -52,16 +52,29 @@ func GetDBPath() (string, error) {
 func New(dbPath string) (*DB, error) {
 	log.Printf("Initializing database connection at: %s", dbPath)
 
-	// Configure GORM to use SQLite
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	// Configure GORM with better settings for Windows
+	config := &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
-	})
+	}
+
+	// Open SQLite database with additional pragmas for Windows compatibility
+	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_synchronous=FULL&_cache_size=1000&_foreign_keys=on", dbPath)
+	db, err := gorm.Open(sqlite.Open(dsn), config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
 
+	// Get underlying SQL DB for additional configuration
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying database: %w", err)
+	}
+
+	// Configure connection pool for better performance
+	sqlDB.SetMaxOpenConns(1) // SQLite works best with single connection
+	sqlDB.SetMaxIdleConns(1)
+
 	// Set secure pragmas
-	db.Exec("PRAGMA foreign_keys = ON;")
 	db.Exec("PRAGMA secure_delete = ON;")
 
 	return &DB{DB: db, dbPath: dbPath}, nil

@@ -7,14 +7,6 @@ function Home() {
     navigate("/create-tournament");
   };
 
-  const handleViewTournaments = () => {
-    navigate("/tournaments");
-  };
-
-  const handleManagePlayers = () => {
-    navigate("/players");
-  };
-
   return (
     <div className="min-h-screen bg-white text-black flex flex-col relative">
       {/* Chess Board Pattern Background */}
@@ -74,37 +66,31 @@ function Home() {
               </div>
             </div>
 
-            {/* View Tournaments Card */}
-            <div
-              className="bg-white border-2 border-black p-6 hover:shadow-lg transition-all duration-300 group cursor-pointer"
-              onClick={handleViewTournaments}
-            >
-              <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
-                ♕
-              </div>
-              <h3 className="text-xl font-bold mb-2">Lihat Turnamen</h3>
-              <p className="text-gray-600 text-sm mb-4">
+            {/* View Tournaments Card - Coming Soon */}
+            <div className="bg-gray-100 border-2 border-gray-300 p-6 transition-all duration-300 group cursor-not-allowed opacity-60">
+              <div className="text-4xl mb-4 text-gray-400">♕</div>
+              <h3 className="text-xl font-bold mb-2 text-gray-500">
+                Lihat Turnamen
+              </h3>
+              <p className="text-gray-400 text-sm mb-4">
                 Pantau progress dan hasil turnamen yang sedang berjalan
               </p>
-              <div className="bg-black text-white px-4 py-2 text-sm font-medium group-hover:bg-gray-800 transition-colors">
-                Lihat Semua
+              <div className="bg-gray-400 text-white px-4 py-2 text-sm font-medium">
+                Coming Soon
               </div>
             </div>
 
-            {/* Manage Players Card */}
-            <div
-              className="bg-white border-2 border-black p-6 hover:shadow-lg transition-all duration-300 group cursor-pointer"
-              onClick={handleManagePlayers}
-            >
-              <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
-                ♖
-              </div>
-              <h3 className="text-xl font-bold mb-2">Kelola Pemain</h3>
-              <p className="text-gray-600 text-sm mb-4">
+            {/* Manage Players Card - Coming Soon */}
+            <div className="bg-gray-100 border-2 border-gray-300 p-6 transition-all duration-300 group cursor-not-allowed opacity-60">
+              <div className="text-4xl mb-4 text-gray-400">♖</div>
+              <h3 className="text-xl font-bold mb-2 text-gray-500">
+                Kelola Pemain
+              </h3>
+              <p className="text-gray-400 text-sm mb-4">
                 Tambah, edit, dan kelola database pemain catur
               </p>
-              <div className="bg-black text-white px-4 py-2 text-sm font-medium group-hover:bg-gray-800 transition-colors">
-                Kelola Pemain
+              <div className="bg-gray-400 text-white px-4 py-2 text-sm font-medium">
+                Coming Soon
               </div>
             </div>
           </div>

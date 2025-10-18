@@ -69,12 +69,23 @@ func SeedInitialData(db *gorm.DB) error {
 		}
 	}
 
-	// Seed initial players only if none exist
+	// Seed initial players only if none exist - use transaction for Windows reliability
 	var count int64
 	if err := db.Model(&model.Player{}).Count(&count).Error; err != nil {
 		return fmt.Errorf("failed to count players: %v", err)
 	}
+	
+	log.Printf("Current player count in database: %d", count)
+	
 	if count == 0 {
+		log.Println("No players found, seeding initial players...")
+		
+		// Use transaction for better Windows compatibility
+		tx := db.Begin()
+		if tx.Error != nil {
+			return fmt.Errorf("failed to begin transaction for seeding: %v", tx.Error)
+		}
+
 		initialPlayers := []model.Player{
 			// Initial Players
 			{ID: uuid.NewString(), Name: "Bima Santoso", Score: 0, OpponentIDs: []string{}, Buchholz: 0, ProgressiveScore: 0, HeadToHeadResults: make(model.HeadToHeadMap), ColorHistory: "", HasBye: false, Club: "Jakarta Chess Club"},
@@ -92,12 +103,31 @@ func SeedInitialData(db *gorm.DB) error {
 			{ID: uuid.NewString(), Name: "Aldo Saputra", Score: 0, OpponentIDs: []string{}, Buchholz: 0, ProgressiveScore: 0, HeadToHeadResults: make(model.HeadToHeadMap), ColorHistory: "", HasBye: false, Club: "Pontianak Chess Club"},
 			{ID: uuid.NewString(), Name: "Rina Melati", Score: 0, OpponentIDs: []string{}, Buchholz: 0, ProgressiveScore: 0, HeadToHeadResults: make(model.HeadToHeadMap), ColorHistory: "", HasBye: false, Club: "Manado Chess Club"},
 		}
-		for _, p := range initialPlayers {
-			if err := db.Create(&p).Error; err != nil {
+		
+		for i, p := range initialPlayers {
+			log.Printf("Seeding player %d: %s", i+1, p.Name)
+			if err := tx.Create(&p).Error; err != nil {
+				tx.Rollback()
 				return fmt.Errorf("failed to seed player %s: %v", p.Name, err)
 			}
 		}
+		
+		// Commit transaction
+		if err := tx.Commit().Error; err != nil {
+			return fmt.Errorf("failed to commit seeding transaction: %v", err)
+		}
+		
+		// Verify seeding worked
+		var verifyCount int64
+		if err := db.Model(&model.Player{}).Count(&verifyCount).Error; err != nil {
+			log.Printf("Warning: Could not verify seeding: %v", err)
+		} else {
+			log.Printf("Seeding completed. Total players in database: %d", verifyCount)
+		}
+		
 		log.Println("Initial players seeded successfully")
+	} else {
+		log.Printf("Players already exist in database (%d players), skipping seeding", count)
 	}
 
 	return nil

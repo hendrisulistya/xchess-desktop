@@ -24,9 +24,25 @@ function SetupTournament() {
     club: "",
   });
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
+  const [isStartingTournament, setIsStartingTournament] = useState(false);
 
   useEffect(() => {
     loadPlayers();
+  }, []);
+
+  // Add effect to reload players when component becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log("Page became visible, reloading players...");
+        loadPlayers(true); // Use preserveLocalPlayers = true
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   const handleTabChange = (tab) => {
@@ -40,16 +56,46 @@ function SetupTournament() {
     }
   };
 
-  const loadPlayers = async () => {
+  const loadPlayers = async (preserveLocalPlayers = false) => {
     try {
       console.log("Loading players from database...");
       const playerList = await ListPlayers();
       console.log("ListPlayers result:", playerList);
-      setPlayers(playerList || []);
-      console.log("Players state updated, count:", (playerList || []).length);
+
+      const dbPlayers = Array.isArray(playerList) ? [...playerList] : [];
+
+      if (preserveLocalPlayers) {
+        // Merge database players with any local players that might not be in DB yet
+        setPlayers((prevPlayers) => {
+          const mergedPlayers = [...dbPlayers];
+
+          // Add any local players that are not in the database yet
+          prevPlayers.forEach((localPlayer) => {
+            const existsInDb = dbPlayers.some(
+              (dbPlayer) =>
+                dbPlayer.id === localPlayer.id ||
+                dbPlayer.name === localPlayer.name
+            );
+            if (!existsInDb) {
+              console.log("Preserving local player:", localPlayer.name);
+              mergedPlayers.push(localPlayer);
+            }
+          });
+
+          console.log("Merged players count:", mergedPlayers.length);
+          return mergedPlayers;
+        });
+        return dbPlayers;
+      } else {
+        // Normal load - replace with database data
+        setPlayers(dbPlayers);
+        console.log("Players state updated, count:", dbPlayers.length);
+        return dbPlayers;
+      }
     } catch (error) {
       console.error("Error loading players:", error);
       setStatus("Error loading players");
+      return [];
     }
   };
 
@@ -78,27 +124,96 @@ function SetupTournament() {
 
       console.log("AddPlayer result:", playerID);
 
-      if (playerID) {
-        setStatus(`Pemain ${newPlayer.name} berhasil ditambahkan`);
+      if (playerID && playerID !== "") {
+        setStatus(
+          `Pemain ${newPlayer.name} berhasil ditambahkan dengan ID: ${playerID}`
+        );
 
         // Reset form
         setNewPlayer({ name: "", club: "" });
         setShowAddPlayerForm(false);
 
-        // Reload players list
-        console.log("Reloading players list...");
-        await loadPlayers();
-        console.log("Players list reloaded, current count:", players.length);
+        // Force immediate UI update by adding the player to local state
+        const tempPlayer = {
+          id: playerID,
+          name: newPlayer.name.trim(),
+          club: newPlayer.club.trim(),
+          score: 0.0,
+        };
 
-        // Clear status after 3 seconds
-        setTimeout(() => setStatus(""), 3000);
+        // Store the new player name for verification
+        const newPlayerName = newPlayer.name.trim();
+
+        setPlayers((prevPlayers) => [...prevPlayers, tempPlayer]);
+
+        // Reload players list with delay to ensure database write is complete
+        console.log("Reloading players list...");
+        setTimeout(async () => {
+          try {
+            const updatedPlayers = await loadPlayers(true); // Use preserveLocalPlayers = true
+            console.log(
+              "Players list reloaded successfully, new count:",
+              updatedPlayers.length
+            );
+
+            // Additional verification - check if the new player is in the list
+            const newPlayerExists = updatedPlayers.some(
+              (p) => p.name === newPlayerName
+            );
+            if (newPlayerExists) {
+              console.log("New player found in updated list");
+            } else {
+              console.warn(
+                "New player not found in updated list, keeping local version..."
+              );
+
+              // Try one more time after additional delay
+              setTimeout(async () => {
+                const retryPlayers = await loadPlayers(true); // Use preserveLocalPlayers = true
+                console.log(
+                  "Retry reload completed, count:",
+                  retryPlayers.length
+                );
+
+                // Final check - if still not found, ensure local player remains
+                const finalCheck = retryPlayers.some(
+                  (p) => p.name === newPlayerName
+                );
+                if (!finalCheck) {
+                  console.warn(
+                    "Player still not in database, maintaining local state"
+                  );
+                  setPlayers((prevPlayers) => {
+                    const hasLocalPlayer = prevPlayers.some(
+                      (p) => p.name === newPlayerName
+                    );
+                    if (!hasLocalPlayer) {
+                      return [...prevPlayers, tempPlayer];
+                    }
+                    return prevPlayers;
+                  });
+                }
+              }, 3000); // Even longer delay for Windows
+            }
+          } catch (reloadError) {
+            console.error("Error reloading players:", reloadError);
+            setStatus(
+              "Pemain ditambahkan tetapi gagal memuat ulang daftar pemain"
+            );
+          }
+        }, 1500); // Increased delay for Windows compatibility
+
+        // Clear status after 5 seconds
+        setTimeout(() => setStatus(""), 5000);
       } else {
-        console.error("AddPlayer returned empty/null playerID");
-        setStatus("Gagal menambahkan pemain");
+        console.error("AddPlayer returned empty/null playerID:", playerID);
+        setStatus("Gagal menambahkan pemain - ID kosong");
       }
     } catch (error) {
       console.error("Error adding player:", error);
-      setStatus("Error saat menambahkan pemain: " + error.message);
+      setStatus(
+        `Error saat menambahkan pemain: ${error.message || error.toString()}`
+      );
     } finally {
       setIsAddingPlayer(false);
     }
@@ -131,6 +246,7 @@ function SetupTournament() {
     }
 
     try {
+      setIsStartingTournament(true);
       setStatus("Menginisialisasi turnamen...");
 
       let title = "Turnamen Baru";
@@ -153,6 +269,7 @@ function SetupTournament() {
       );
       if (!ok) {
         setStatus("Gagal menginisialisasi turnamen");
+        setIsStartingTournament(false);
         return;
       }
 
@@ -160,6 +277,7 @@ function SetupTournament() {
       const roundOk = await NextRound();
       if (!roundOk) {
         setStatus("Gagal membuat ronde pertama");
+        setIsStartingTournament(false);
         return;
       }
 
@@ -167,10 +285,12 @@ function SetupTournament() {
 
       setTimeout(() => {
         navigate("/pairing");
+        setIsStartingTournament(false);
       }, 1500);
     } catch (error) {
       console.error("Error initializing tournament:", error);
       setStatus("Error saat menginisialisasi turnamen");
+      setIsStartingTournament(false);
     }
   };
 
@@ -204,7 +324,13 @@ function SetupTournament() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 relative z-10 p-6">
+      <main
+        className={`flex-1 relative z-10 p-6 transition-all duration-500 ${
+          isStartingTournament
+            ? "opacity-75 pointer-events-none"
+            : "opacity-100"
+        }`}
+      >
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold mb-4">Setup Turnamen Baru</h2>
@@ -219,7 +345,7 @@ function SetupTournament() {
               <h3 className="text-xl font-bold">Tambah Pemain Baru</h3>
               <button
                 onClick={() => setShowAddPlayerForm(!showAddPlayerForm)}
-                className="px-4 py-2 text-sm font-medium border-2 border-black bg-white text-black hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 text-sm font-medium border-2 border-black bg-white text-black hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 {showAddPlayerForm ? "Tutup Form" : "Tambah Pemain"}
               </button>
@@ -268,7 +394,7 @@ function SetupTournament() {
                     className={`px-6 py-2 font-medium transition-all ${
                       isAddingPlayer || !newPlayer.name.trim()
                         ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-black text-white hover:bg-gray-800"
+                        : "bg-black text-white hover:bg-gray-800 cursor-pointer"
                     }`}
                   >
                     {isAddingPlayer ? "Menambahkan..." : "Tambah Pemain"}
@@ -277,7 +403,9 @@ function SetupTournament() {
                     type="button"
                     onClick={handleCancelAddPlayer}
                     disabled={isAddingPlayer}
-                    className="px-6 py-2 font-medium border-2 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                    className={`px-6 py-2 font-medium border-2 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors ${
+                      isAddingPlayer ? "cursor-not-allowed" : "cursor-pointer"
+                    }`}
                   >
                     Batal
                   </button>
@@ -292,14 +420,23 @@ function SetupTournament() {
               <h3 className="text-xl font-bold">
                 Pilih Peserta ({selectedIDs.length} dipilih)
               </h3>
-              <button
-                onClick={selectAll}
-                className="px-4 py-2 text-sm font-medium border-2 border-black bg-white text-black hover:bg-gray-100 transition-colors"
-              >
-                {selectedIDs.length === players.length
-                  ? "Deselect All"
-                  : "Select All"}
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => loadPlayers(true)}
+                  className="px-3 py-1 text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors rounded cursor-pointer"
+                  title="Refresh daftar pemain"
+                >
+                  Refresh
+                </button>
+                <button
+                  onClick={selectAll}
+                  className="px-4 py-2 text-sm font-medium border-2 border-black bg-white text-black hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  {selectedIDs.length === players.length
+                    ? "Deselect All"
+                    : "Select All"}
+                </button>
+              </div>
             </div>
 
             {players.length === 0 ? (
@@ -340,14 +477,26 @@ function SetupTournament() {
             <div className="text-center">
               <button
                 onClick={initTournament}
-                disabled={selectedIDs.length < 2}
-                className={`px-8 py-3 font-medium transition-all ${
-                  selectedIDs.length < 2
+                disabled={selectedIDs.length < 2 || isStartingTournament}
+                className={`px-8 py-3 font-medium transition-all relative overflow-hidden ${
+                  selectedIDs.length < 2 || isStartingTournament
                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : "bg-black text-white hover:bg-gray-800"
+                    : "bg-black text-white hover:bg-gray-800 cursor-pointer"
                 }`}
               >
-                Mulai Turnamen ({selectedIDs.length} pemain)
+                {isStartingTournament && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-pulse"></div>
+                )}
+                <div className="relative z-10 flex items-center justify-center">
+                  {isStartingTournament && (
+                    <div className="mr-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
+                  {isStartingTournament
+                    ? "Memulai Turnamen..."
+                    : `Mulai Turnamen (${selectedIDs.length} pemain)`}
+                </div>
               </button>
             </div>
           </div>

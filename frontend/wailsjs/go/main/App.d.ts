@@ -16,6 +16,8 @@ export function ExportAllRoundsPairingsToPDF():Promise<Array<number>>;
 
 export function ExportRoundPairingsToPDF(arg1:number):Promise<Array<number>>;
 
+export function ExportStandingsToPDF():Promise<Array<number>>;
+
 export function GetCurrentRound():Promise<model.Round>;
 
 export function GetPlayers():Promise<Array<model.Player>>;
@@ -39,3 +41,5 @@ export function RecordResult(arg1:number,arg2:string):Promise<boolean>;
 export function SaveAllRoundsPairingsToPDF():Promise<string>;
 
 export function SaveRoundPairingsToPDF(arg1:number):Promise<string>;
+
+export function SaveStandingsToPDF():Promise<string>;

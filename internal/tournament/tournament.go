@@ -1480,6 +1480,232 @@ func ExportRoundPairingsToPDF(t *model.Tournament, roundNumber int) ([]byte, err
 	return document.GetBytes(), nil
 }
 
+// ExportStandingsToPDF generates a PDF file with tournament standings (klasemen)
+func ExportStandingsToPDF(t *model.Tournament) ([]byte, error) {
+	// Get standings (sorted players)
+	standings, err := GetStandings(t)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get standings: %w", err)
+	}
+
+	if len(standings) == 0 {
+		return nil, fmt.Errorf("no players found in tournament")
+	}
+
+	// Create PDF configuration
+	cfg := config.NewBuilder().
+		WithPageNumber().
+		Build()
+
+	m := maroto.New(cfg)
+
+	// Add logo centered at top (larger size)
+	m.AddRows(
+		row.New(25).Add(
+			col.New(12).Add(
+				image.NewFromFile("build/xchess.png", props.Rect{
+					Top:     2,
+					Center:  true,
+					Percent: 75,
+				}),
+			),
+		),
+	)
+
+	// Add tournament title (reduced spacing)
+	m.AddRows(
+		row.New(8).Add(
+			col.New(12).Add(
+				text.New(t.Title, props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  18,
+				}),
+			),
+		),
+	)
+
+	// Add tournament description (if exists)
+	if t.Description != "" {
+		m.AddRows(
+			row.New(6).Add(
+				col.New(12).Add(
+					text.New(t.Description, props.Text{
+						Top:   3,
+						Align: align.Center,
+						Size:  12,
+					}),
+				),
+			),
+		)
+	}
+
+	// Add standings title
+	m.AddRows(
+		row.New(15).Add(
+			col.New(12).Add(
+				text.New("Klasemen Turnamen", props.Text{
+					Top:   3,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  14,
+				}),
+			),
+		),
+	)
+
+	// Add table headers
+	m.AddRows(
+		row.New(12).Add(
+			col.New(1).Add(
+				text.New("Rank", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  9,
+				}),
+			),
+			col.New(3).Add(
+				text.New("Nama", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  9,
+				}),
+			),
+			col.New(1).Add(
+				text.New("Poin", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  9,
+				}),
+			),
+			col.New(2).Add(
+				text.New("Buchholz", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  9,
+				}),
+			),
+			col.New(2).Add(
+				text.New("Progressive", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  9,
+				}),
+			),
+			col.New(3).Add(
+				text.New("Club / Domisili", props.Text{
+					Top:   2,
+					Style: fontstyle.Bold,
+					Align: align.Center,
+					Size:  9,
+				}),
+			),
+		),
+	)
+
+	// Add player standings data
+	for i, player := range standings {
+		rank := fmt.Sprintf("#%d", i+1)
+		points := fmt.Sprintf("%.1f", player.Score)
+		buchholz := fmt.Sprintf("%.1f", player.Buchholz)
+		progressive := fmt.Sprintf("%.1f", player.ProgressiveScore)
+		
+		// Handle empty club field
+		club := player.Club
+		if club == "" {
+			club = "-"
+		}
+
+		m.AddRows(
+			row.New(10).Add(
+				col.New(1).Add(
+					text.New(rank, props.Text{
+						Top:   1,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(3).Add(
+					text.New(player.Name, props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(1).Add(
+					text.New(points, props.Text{
+						Top:   1,
+						Style: fontstyle.Bold,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(2).Add(
+					text.New(buchholz, props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(2).Add(
+					text.New(progressive, props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+				col.New(3).Add(
+					text.New(club, props.Text{
+						Top:   1,
+						Align: align.Center,
+						Size:  9,
+					}),
+				),
+			),
+		)
+	}
+
+	// Add footer with timestamp and maintenance info
+	m.AddRows(
+		row.New(10).Add(
+			col.New(12).Add(
+				text.New(time.Now().Format("2006-01-02 15:04:05"), props.Text{
+					Top:   3,
+					Align: align.Center,
+					Size:  8,
+				}),
+			),
+		),
+	)
+	
+	m.AddRows(
+		row.New(8).Add(
+			col.New(12).Add(
+				text.New("maintenance by kewr digital", props.Text{
+					Top:   1,
+					Align: align.Center,
+					Size:  8,
+				}),
+			),
+		),
+	)
+
+	// Generate PDF
+	document, err := m.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PDF: %w", err)
+	}
+
+	return document.GetBytes(), nil
+}
+
 // ExportAllRoundsPairingsToPDF generates a PDF file with all tournament rounds pairings
 func ExportAllRoundsPairingsToPDF(t *model.Tournament) ([]byte, error) {
 	rounds, err := t.GetRounds()
@@ -1509,32 +1735,47 @@ func ExportAllRoundsPairingsToPDF(t *model.Tournament) ([]byte, error) {
 
 	m := maroto.New(cfg)
 
-	// Add main title
+	// Add logo centered at top (larger size)
 	m.AddRows(
-		row.New(20).Add(
+		row.New(25).Add(
 			col.New(12).Add(
-				text.New(fmt.Sprintf("Tournament: %s - All Rounds", t.Title), props.Text{
-					Top:   3,
-					Style: fontstyle.Bold,
-					Align: align.Center,
-					Size:  16,
+				image.NewFromFile("build/xchess.png", props.Rect{
+					Top:     2,
+					Center:  true,
+					Percent: 75,
 				}),
 			),
 		),
 	)
 
-	// Add tournament ID
+	// Add tournament title (reduced spacing)
 	m.AddRows(
-		row.New(10).Add(
+		row.New(8).Add(
 			col.New(12).Add(
-				text.New(fmt.Sprintf("Tournament ID: %s", t.ID.String()), props.Text{
+				text.New(t.Title, props.Text{
 					Top:   2,
+					Style: fontstyle.Bold,
 					Align: align.Center,
-					Size:  10,
+					Size:  18,
 				}),
 			),
 		),
 	)
+
+	// Add tournament description (if exists)
+	if t.Description != "" {
+		m.AddRows(
+			row.New(6).Add(
+				col.New(12).Add(
+					text.New(t.Description, props.Text{
+						Top:   3,
+						Align: align.Center,
+						Size:  12,
+					}),
+				),
+			),
+		)
+	}
 
 	// Process each round
 	for i, round := range rounds {
@@ -1681,12 +1922,24 @@ func ExportAllRoundsPairingsToPDF(t *model.Tournament) ([]byte, error) {
 		}
 	}
 
-	// Add footer
+	// Add footer with timestamp and maintenance info
 	m.AddRows(
-		row.New(15).Add(
+		row.New(10).Add(
 			col.New(12).Add(
-				text.New(fmt.Sprintf("Generated on: %s", time.Now().Format("2006-01-02 15:04:05")), props.Text{
-					Top:   5,
+				text.New(time.Now().Format("2006-01-02 15:04:05"), props.Text{
+					Top:   3,
+					Align: align.Center,
+					Size:  8,
+				}),
+			),
+		),
+	)
+	
+	m.AddRows(
+		row.New(8).Add(
+			col.New(12).Add(
+				text.New("maintenance by kewr digital", props.Text{
+					Top:   1,
 					Align: align.Center,
 					Size:  8,
 				}),
